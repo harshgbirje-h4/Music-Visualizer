@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPECTR - Audio Visualizer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-theme="classic">
+  <div id="theme-bg"></div>
+  <div id="beat-flash"></div>
+  <video id="theme-video" muted loop playsinline class="hidden"></video>
+  <img id="theme-image" class="hidden" />
+  <canvas id="bg-canvas"></canvas>
+  <canvas id="viz-canvas"></canvas>
+
+  <div id="file-player" class="hidden">
+    <div id="file-player-name">No file loaded</div>
+    <audio id="audio-element" crossorigin="anonymous"></audio>
+    <div id="file-player-controls">
+      <button id="fp-playpause" type="button">PLAY</button>
+      <div id="fp-progress-wrap">
+        <div id="fp-progress-bar"></div>
+      </div>
+      <span id="fp-time">0:00</span>
+    </div>
+  </div>
+
+  <div id="energy-meter">
+    <div id="energy-label">ENERGY</div>
+    <div id="energy-track">
+      <div id="energy-fill"></div>
+    </div>
+  </div>
+
+  <div id="source-badge" class="hidden">
+    <span id="source-badge-icon">MIC</span>
+    <span id="source-badge-text">MIC</span>
+  </div>
+
+  <header id="app-header">
+    <div id="logo">
+      <span class="logo-s">S</span><span class="logo-p">P</span><span class="logo-e">E</span><span class="logo-c">C</span><span class="logo-t">T</span><span class="logo-r">R</span>
+    </div>
+    <div id="header-meta">
+      <div id="theme-name">CLASSIC MODE</div>
+      <div id="theme-tagline">Warm nostalgia</div>
+    </div>
+    <div id="header-controls">
+      <button id="btn-mini" type="button" title="Mini Window">MINI</button>
+      <button id="btn-fullscreen" type="button" title="Fullscreen">FULL</button>
+      <button id="btn-screenshot" type="button" title="Screenshot">SHOT</button>
+      <button id="btn-pause" type="button" title="Pause" disabled>PAUSE</button>
+    </div>
+  </header>
+
+  <div id="control-panel">
+    <div class="control-group">
+      <div class="control-label">SOURCE</div>
+      <div class="btn-group" id="source-switcher">
+        <button class="source-btn active" data-source="mic" type="button">MIC</button>
+        <button class="source-btn" data-source="file" type="button">FILE</button>
+        <button class="source-btn" data-source="screen" type="button">SCREEN</button>
+      </div>
+    </div>
+
+    <div id="start-section">
+      <button id="btn-start" type="button">
+        <span class="btn-icon">MIC</span>
+        <span>Start Mic</span>
+      </button>
+      <input type="file" id="file-input" accept="audio/*,video/*" hidden />
+    </div>
+
+    <div class="control-group">
+      <div class="control-label">MODE</div>
+      <div class="btn-group" id="mode-switcher">
+        <button class="mode-btn active" data-mode="bars" type="button">BARS</button>
+        <button class="mode-btn" data-mode="circle" type="button">RADIAL</button>
+        <button class="mode-btn" data-mode="wave" type="button">WAVE</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <div class="control-label">THEME</div>
+      <div class="btn-group" id="theme-switcher">
+        <button class="theme-btn active" data-theme="classic" type="button">CLASSIC</button>
+        <button class="theme-btn" data-theme="bw" type="button">B&amp;W</button>
+        <button class="theme-btn" data-theme="rock" type="button">ROCK</button>
+        <button class="theme-btn" data-theme="memory" type="button">MEMORY</button>
+        <button class="theme-btn" data-theme="chill" type="button">CHILL</button>
+        <button class="theme-btn" data-theme="study" type="button">STUDY</button>
+        <button class="theme-btn" data-theme="phonk" type="button">PHONK</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <div class="control-label">SENSITIVITY <span id="sensitivity-val">1.0</span></div>
+      <input type="range" id="sensitivity-slider" min="0.2" max="3.0" step="0.1" value="1.0" />
+    </div>
+
+    <div class="control-group toggle-row">
+      <label class="toggle-label">
+        <input type="checkbox" id="toggle-bg" checked />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        BG FX
+      </label>
+      <label class="toggle-label">
+        <input type="checkbox" id="toggle-autocycle" />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        AUTO COLOR
+      </label>
+    </div>
+  </div>
+
+  <div id="mini-overlay" class="hidden">
+    <div id="mini-header">
+      <span id="mini-title">SPECTR MINI</span>
+      <div id="mini-header-btns">
+        <button id="mini-pip-btn" type="button" title="Picture-in-Picture">PIP</button>
+        <button id="mini-close" type="button">X</button>
+      </div>
+    </div>
+    <canvas id="mini-canvas" width="300" height="160"></canvas>
+    <div id="mini-source-label">NO SIGNAL</div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
