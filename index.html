@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<<<<<<< HEAD
   <title>SPECTR - Audio Visualizer</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -14,11 +15,32 @@
   <canvas id="bg-canvas"></canvas>
   <canvas id="viz-canvas"></canvas>
 
+=======
+  <title>SPECTR — Audio Visualizer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Beat Flash Overlay -->
+  <div id="beat-flash"></div>
+
+  <!-- Ambient background canvas (light streaks / particles) -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- Main Visualizer Canvas -->
+  <canvas id="viz-canvas"></canvas>
+
+  <!-- ── Floating File Player ── -->
+>>>>>>> 9c4df1acd34d0733e195ccda157f98a3081ab930
   <div id="file-player" class="hidden">
     <div id="file-player-name">No file loaded</div>
     <audio id="audio-element" crossorigin="anonymous"></audio>
     <div id="file-player-controls">
+<<<<<<< HEAD
       <button id="fp-playpause" type="button">PLAY</button>
+=======
+      <button id="fp-playpause">▶</button>
+>>>>>>> 9c4df1acd34d0733e195ccda157f98a3081ab930
       <div id="fp-progress-wrap">
         <div id="fp-progress-bar"></div>
       </div>
@@ -26,6 +48,10 @@
     </div>
   </div>
 
+<<<<<<< HEAD
+=======
+  <!-- Energy Meter -->
+>>>>>>> 9c4df1acd34d0733e195ccda157f98a3081ab930
   <div id="energy-meter">
     <div id="energy-label">ENERGY</div>
     <div id="energy-track">
@@ -33,15 +59,26 @@
     </div>
   </div>
 
+<<<<<<< HEAD
   <div id="source-badge" class="hidden">
     <span id="source-badge-icon">MIC</span>
     <span id="source-badge-text">MIC</span>
   </div>
 
+=======
+  <!-- Source Badge -->
+  <div id="source-badge" class="hidden">
+    <span id="source-badge-icon">🎙</span>
+    <span id="source-badge-text">MIC</span>
+  </div>
+
+  <!-- Header -->
+>>>>>>> 9c4df1acd34d0733e195ccda157f98a3081ab930
   <header id="app-header">
     <div id="logo">
       <span class="logo-s">S</span><span class="logo-p">P</span><span class="logo-e">E</span><span class="logo-c">C</span><span class="logo-t">T</span><span class="logo-r">R</span>
     </div>
+<<<<<<< HEAD
     <div id="header-meta">
       <div id="theme-name">CLASSIC MODE</div>
       <div id="theme-tagline">Warm nostalgia</div>
@@ -94,11 +131,69 @@
       </div>
     </div>
 
+=======
+    <div id="header-controls">
+      <button id="btn-mini" title="Mini Window">⧉</button>
+      <button id="btn-fullscreen" title="Fullscreen">⛶</button>
+      <button id="btn-screenshot" title="Screenshot">📷</button>
+      <button id="btn-pause" title="Pause" disabled>⏸</button>
+    </div>
+  </header>
+
+  <!-- Control Panel -->
+  <div id="control-panel">
+
+    <!-- Audio Source Switcher -->
+    <div class="control-group">
+      <div class="control-label">SOURCE</div>
+      <div class="btn-group" id="source-switcher">
+        <button class="source-btn active" data-source="mic"    title="Microphone">🎙 MIC</button>
+        <button class="source-btn"        data-source="file"   title="Upload File">📁 FILE</button>
+        <button class="source-btn"        data-source="screen" title="System Audio">🖥 SCREEN</button>
+      </div>
+    </div>
+
+    <!-- Start Button -->
+    <div id="start-section">
+      <button id="btn-start">
+        <span class="btn-icon">🎙</span>
+        <span>Start Visualizer</span>
+      </button>
+      <input type="file" id="file-input" accept="audio/*,video/*" style="display:none" />
+    </div>
+
+    <!-- Mode Switcher -->
+    <div class="control-group">
+      <div class="control-label">MODE</div>
+      <div class="btn-group" id="mode-switcher">
+        <button class="mode-btn active" data-mode="bars">BARS</button>
+        <button class="mode-btn" data-mode="circle">RADIAL</button>
+        <button class="mode-btn" data-mode="wave">WAVE</button>
+        <button class="mode-btn" data-mode="particles">PARTICLES</button>
+      </div>
+    </div>
+
+    <!-- Theme Switcher -->
+    <div class="control-group">
+      <div class="control-label">THEME</div>
+      <div class="btn-group" id="theme-switcher">
+        <button class="theme-btn active" data-theme="neon">NEON</button>
+        <button class="theme-btn" data-theme="cyberpunk">CYBER</button>
+        <button class="theme-btn" data-theme="minimal">MINIMAL</button>
+      </div>
+    </div>
+
+    <!-- Sensitivity -->
+>>>>>>> 9c4df1acd34d0733e195ccda157f98a3081ab930
     <div class="control-group">
       <div class="control-label">SENSITIVITY <span id="sensitivity-val">1.0</span></div>
       <input type="range" id="sensitivity-slider" min="0.2" max="3.0" step="0.1" value="1.0" />
     </div>
 
+<<<<<<< HEAD
+=======
+    <!-- Toggles -->
+>>>>>>> 9c4df1acd34d0733e195ccda157f98a3081ab930
     <div class="control-group toggle-row">
       <label class="toggle-label">
         <input type="checkbox" id="toggle-bg" checked />
@@ -113,6 +208,7 @@
     </div>
   </div>
 
+<<<<<<< HEAD
   <div id="mini-overlay" class="hidden">
     <div id="mini-header">
       <span id="mini-title">SPECTR MINI</span>
@@ -123,6 +219,19 @@
     </div>
     <canvas id="mini-canvas" width="300" height="160"></canvas>
     <div id="mini-source-label">NO SIGNAL</div>
+=======
+  <!-- Draggable Mini Overlay Window -->
+  <div id="mini-overlay" class="hidden">
+    <div id="mini-header">
+      <span id="mini-title">◈ SPECTR MINI</span>
+      <div id="mini-header-btns">
+        <button id="mini-pip-btn" title="Picture-in-Picture">⊡</button>
+        <button id="mini-close">✕</button>
+      </div>
+    </div>
+    <canvas id="mini-canvas" width="300" height="160"></canvas>
+    <div id="mini-source-label">— NO SIGNAL —</div>
+>>>>>>> 9c4df1acd34d0733e195ccda157f98a3081ab930
   </div>
 
   <script src="script.js"></script>
