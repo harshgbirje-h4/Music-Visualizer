@@ -1,21 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap');
 
 :root {
-  --bg: #1a1108;
-  --bg-soft: #2b1b10;
-  --panel: rgba(30, 18, 10, 0.84);
-  --panel-strong: rgba(42, 24, 12, 0.94);
-  --border: rgba(206, 144, 77, 0.42);
-  --text: #f8e2b1;
-  --dim: #9c7a52;
-  --acc1: #f0a24d;
-  --acc2: #ffcf6b;
-  --acc3: #6a4327;
-  --glow: rgba(240, 162, 77, 0.28);
-  --glow-hi: rgba(255, 211, 126, 0.55);
-  --flash: rgba(255, 196, 120, 0.16);
+  --bg: #0a0a0a;
+  --bg-soft: #1a1a1a;
+  --panel: rgba(20, 20, 20, 0.84);
+  --panel-strong: rgba(30, 30, 30, 0.94);
+  --border: rgba(150, 150, 150, 0.3);
+  --text: #e0e0e0;
+  --dim: #888888;
+  --acc1: #a0a0a0;
+  --acc2: #cccccc;
+  --acc3: #4d4d4d;
+  --glow: rgba(200, 200, 200, 0.2);
+  --glow-hi: rgba(255, 255, 255, 0.4);
+  --flash: rgba(255, 255, 255, 0.1);
   --grain: 0.16;
   --canvas-opacity: 0.72;
+}
+
+body[data-theme="default"] {
+  --bg: #0a0a0a;
+  --bg-soft: #1a1a1a;
+  --panel: rgba(20, 20, 20, 0.84);
+  --panel-strong: rgba(30, 30, 30, 0.94);
+  --border: rgba(150, 150, 150, 0.3);
+  --text: #e0e0e0;
+  --dim: #888888;
+  --acc1: #a0a0a0;
+  --acc2: #cccccc;
+  --acc3: #4d4d4d;
+  --glow: rgba(200, 200, 200, 0.2);
+  --glow-hi: rgba(255, 255, 255, 0.4);
+  --flash: rgba(255, 255, 255, 0.1);
+  --grain: 0.16;
 }
 
 body[data-theme="classic"] {
@@ -214,8 +231,8 @@ body.theme-transitioning #bg-canvas {
   left: 0;
   right: 0;
   z-index: 20;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 16px;
   padding: 16px 24px;
@@ -245,7 +262,9 @@ body.theme-transitioning #bg-canvas {
 .logo-r { color: var(--text); }
 
 #header-meta {
-  justify-self: center;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   text-align: center;
   pointer-events: none;
 }
@@ -785,21 +804,24 @@ body.theme-transitioning #bg-canvas {
 
 @media (max-width: 900px) {
   #app-header {
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      "logo controls"
-      "meta meta";
-    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: space-between;
     padding: 12px 14px;
   }
 
-  #logo {
-    grid-area: logo;
+  #header-meta {
+    position: relative;
+    left: auto;
+    transform: none;
+    order: 3;
+    width: 100%;
+    margin-top: 12px;
   }
 
   #header-controls {
-    grid-area: controls;
     gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   #header-controls button {
@@ -807,12 +829,8 @@ body.theme-transitioning #bg-canvas {
     padding: 6px 8px;
   }
 
-  #header-meta {
-    grid-area: meta;
-  }
-
   #file-player {
-    top: 98px;
+    top: 110px;
   }
 
   #control-panel {
@@ -851,6 +869,83 @@ body.theme-transitioning #bg-canvas {
     width: 260px !important;
     height: 140px !important;
   }
+
+  #intro-title {
+    font-size: clamp(3rem, 15vw, 6rem);
+    letter-spacing: 0.5rem;
+    margin-left: 0.5rem;
+  }
+
+  #btn-enter {
+    padding: 1rem 2rem;
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  #app-header {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 16px 12px;
+    gap: 12px;
+  }
+  
+  #logo {
+    text-align: center;
+    order: 1;
+  }
+
+  #header-controls {
+    order: 2;
+    margin-top: 0;
+    justify-content: center;
+    gap: 8px;
+  }
+  
+  #header-meta {
+    order: 3;
+    margin: 4px 0 0 0;
+    position: relative;
+    left: auto;
+    transform: none;
+  }
+
+  #control-panel {
+    width: 100%;
+    padding: 12px 10px 16px;
+    gap: 12px;
+    border-radius: 12px 12px 0 0;
+    justify-content: center;
+    flex-direction: column;
+  }
+
+  .btn-group {
+    justify-content: center;
+    width: 100%;
+  }
+  
+  .control-group {
+    align-items: center;
+    text-align: center;
+    width: 100%;
+  }
+  
+  #file-player {
+    top: 170px;
+    width: 90vw;
+  }
+  
+  #source-badge {
+    top: auto;
+    bottom: 240px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  
+  #energy-meter {
+    display: none;
+  }
 }
 
 #theme-bg {
@@ -879,4 +974,85 @@ body.theme-transitioning #bg-canvas {
 
 #theme-video.hidden, #theme-image.hidden {
   opacity: 0;
+}
+
+/* =========================================
+   INTRO SCREEN
+   ========================================= */
+#intro-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #050505;
+  transition: opacity 1.2s ease, visibility 1.2s ease;
+}
+
+#intro-screen.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.intro-bg-image {
+  position: absolute;
+  inset: 0;
+  background-image: url('intro-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.8;
+  z-index: -1;
+  animation: introZoom 25s infinite alternate;
+}
+
+@keyframes introZoom {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.15); }
+}
+
+.intro-content {
+  text-align: center;
+  z-index: 1;
+}
+
+#intro-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 8rem;
+  font-weight: 900;
+  letter-spacing: 1.5rem;
+  color: #fff;
+  text-shadow: 0 0 40px rgba(255, 255, 255, 0.4);
+  margin-bottom: 3rem;
+  margin-left: 1.5rem; /* Offset for letter-spacing */
+  animation: pulseTitle 4s infinite;
+}
+
+@keyframes pulseTitle {
+  0%, 100% { text-shadow: 0 0 30px rgba(255,255,255,0.3); }
+  50% { text-shadow: 0 0 60px rgba(100,200,255,0.7), 0 0 20px rgba(100,200,255,0.4); }
+}
+
+#btn-enter {
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  color: #fff;
+  padding: 1.2rem 3rem;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.3rem;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+}
+
+#btn-enter:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: #fff;
+  box-shadow: 0 0 25px rgba(255, 255, 255, 0.6);
+  transform: scale(1.05);
 }

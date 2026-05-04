@@ -1,16 +1,42 @@
 'use strict';
 
 const THEMES = {
+  default: {
+    label: 'CHOOSE A THEME',
+    tagline: 'Waiting for selection...',
+    palette: ['#ffffff', '#cccccc', '#999999', '#666666'],
+    glowColor: '#ffffff',
+    background: ['#000000', '#111111', '#222222'],
+    analyserSmoothing: 0.8,
+    beatScaleBoost: 0.01,
+    beatFlashDuration: 100,
+    beatCooldownMax: 20,
+    barSharpness: 0.5,
+    lineWidth: 2,
+    glowIntensity: 0.2,
+    amplitude: 0.5,
+    animationSpeed: 0.5,
+    bgParticleCount: 20,
+    bgParticleSpeed: 0.2,
+    particleTrail: 0.2,
+    waveformSmoothness: 0.6,
+    staticNoise: 0.0,
+    burstCount: 5,
+    road: false,
+    radio: false,
+    scanlines: false,
+    silhouettes: false
+  },
   classic: {
     label: 'CLASSIC MODE',
     tagline: 'Warm nostalgia',
     palette: ['#ffd27a', '#f0a24d', '#b46a2d', '#6e4222'],
     glowColor: '#f0a24d',
     background: ['#120b05', '#28170d', '#4f311b'],
-    analyserSmoothing: 0.9,
+    analyserSmoothing: 0.65,
     beatScaleBoost: 0.028,
     beatFlashDuration: 120,
-    beatCooldownMax: 24,
+    beatCooldownMax: 16,
     barSharpness: 0.7,
     lineWidth: 3,
     glowIntensity: 0.65,
@@ -19,7 +45,7 @@ const THEMES = {
     bgParticleCount: 44,
     bgParticleSpeed: 0.42,
     particleTrail: 0.18,
-    waveformSmoothness: 0.62,
+    waveformSmoothness: 0.4,
     staticNoise: 0.04,
     burstCount: 10,
     road: false,
@@ -33,10 +59,10 @@ const THEMES = {
     palette: ['#f8f8f8', '#cccccc', '#888888', '#353535'],
     glowColor: '#f2f2f2',
     background: ['#030303', '#0f0f0f', '#1c1c1c'],
-    analyserSmoothing: 0.7,
+    analyserSmoothing: 0.6,
     beatScaleBoost: 0.014,
     beatFlashDuration: 70,
-    beatCooldownMax: 14,
+    beatCooldownMax: 12,
     barSharpness: 1.35,
     lineWidth: 1.2,
     glowIntensity: 0.2,
@@ -45,7 +71,7 @@ const THEMES = {
     bgParticleCount: 120,
     bgParticleSpeed: 1.4,
     particleTrail: 0.06,
-    waveformSmoothness: 0.22,
+    waveformSmoothness: 0.15,
     staticNoise: 0.28,
     burstCount: 6,
     road: false,
@@ -59,19 +85,19 @@ const THEMES = {
     palette: ['#ff416d', '#ff7f50', '#b835ff', '#5f9cff'],
     glowColor: '#ff4b83',
     background: ['#08030f', '#18091c', '#260a30'],
-    analyserSmoothing: 0.63,
+    analyserSmoothing: 0.55,
     beatScaleBoost: 0.05,
     beatFlashDuration: 85,
-    beatCooldownMax: 10,
-    barSharpness: 1.55,
+    beatCooldownMax: 8,
+    barSharpness: 1.25,
     lineWidth: 4.2,
     glowIntensity: 1.18,
-    amplitude: 1.22,
+    amplitude: 1.0,
     animationSpeed: 1.18,
     bgParticleCount: 56,
     bgParticleSpeed: 1.25,
     particleTrail: 0.12,
-    waveformSmoothness: 0.3,
+    waveformSmoothness: 0.2,
     staticNoise: 0.02,
     burstCount: 20,
     road: false,
@@ -85,10 +111,10 @@ const THEMES = {
     palette: ['#98dcff', '#5dc7ff', '#7c8dff', '#c2a8ff'],
     glowColor: '#7fd6ff',
     background: ['#050c16', '#0e1b31', '#17365c'],
-    analyserSmoothing: 0.92,
+    analyserSmoothing: 0.65,
     beatScaleBoost: 0.018,
     beatFlashDuration: 150,
-    beatCooldownMax: 22,
+    beatCooldownMax: 18,
     barSharpness: 0.82,
     lineWidth: 2.2,
     glowIntensity: 0.46,
@@ -97,7 +123,7 @@ const THEMES = {
     bgParticleCount: 68,
     bgParticleSpeed: 0.56,
     particleTrail: 0.13,
-    waveformSmoothness: 0.72,
+    waveformSmoothness: 0.35,
     staticNoise: 0.01,
     burstCount: 8,
     road: false,
@@ -111,10 +137,10 @@ const THEMES = {
     palette: ['#4dabf7', '#9775fa', '#3b5bdb', '#845ef7'],
     glowColor: '#4dabf7',
     background: ['#0a0b12', '#141624', '#1d2136'],
-    analyserSmoothing: 0.95,
+    analyserSmoothing: 0.68,
     beatScaleBoost: 0.015,
     beatFlashDuration: 200,
-    beatCooldownMax: 30,
+    beatCooldownMax: 24,
     barSharpness: 0.5,
     lineWidth: 2,
     glowIntensity: 0.4,
@@ -123,7 +149,7 @@ const THEMES = {
     bgParticleCount: 40,
     bgParticleSpeed: 0.3,
     particleTrail: 0.2,
-    waveformSmoothness: 0.8,
+    waveformSmoothness: 0.4,
     staticNoise: 0.01,
     burstCount: 4,
     road: false,
@@ -137,10 +163,10 @@ const THEMES = {
     palette: ['#ffffff', '#cccccc', '#999999', '#666666'],
     glowColor: '#ffffff',
     background: ['#000000', '#111111', '#222222'],
-    analyserSmoothing: 0.98,
+    analyserSmoothing: 0.7,
     beatScaleBoost: 0.005,
     beatFlashDuration: 300,
-    beatCooldownMax: 40,
+    beatCooldownMax: 30,
     barSharpness: 0.3,
     lineWidth: 1.5,
     glowIntensity: 0.2,
@@ -149,7 +175,7 @@ const THEMES = {
     bgParticleCount: 20,
     bgParticleSpeed: 0.2,
     particleTrail: 0.3,
-    waveformSmoothness: 0.9,
+    waveformSmoothness: 0.5,
     staticNoise: 0.0,
     burstCount: 2,
     road: false,
@@ -163,25 +189,25 @@ const THEMES = {
     palette: ['#ff0000', '#aa00ff', '#ff3333', '#cc00cc'],
     glowColor: '#ff0000',
     background: ['#140000', '#240000', '#340000'],
-    analyserSmoothing: 0.5,
+    analyserSmoothing: 0.4,
     beatScaleBoost: 0.08,
     beatFlashDuration: 60,
-    beatCooldownMax: 8,
-    barSharpness: 2.0,
+    beatCooldownMax: 6,
+    barSharpness: 1.5,
     lineWidth: 5.0,
     glowIntensity: 1.5,
-    amplitude: 1.5,
+    amplitude: 1.1,
     animationSpeed: 1.5,
     bgParticleCount: 80,
     bgParticleSpeed: 1.8,
     particleTrail: 0.05,
-    waveformSmoothness: 0.1,
+    waveformSmoothness: 0.05,
     staticNoise: 0.1,
     burstCount: 30,
     road: false,
     radio: false,
     scanlines: true,
-    silhouettes: true
+    silhouettes: false
   }
 };
 
@@ -203,6 +229,7 @@ const state = {
   sensitivity: 1.0,
   showBgFx: true,
   autoCycle: false,
+  bassMode: true,
   beatThreshold: 160,
   beatCooldown: 0,
   beatCooldownMax: THEMES.classic.beatCooldownMax,
@@ -213,6 +240,8 @@ const state = {
   radialAngle: 0,
   energy: 0,
   energySmoothed: 0,
+  bgCircleRadiusSmoothed: 0,
+  bassSmoothed: 0,
   particles: [],
   bgParticles: [],
   bursts: [],
@@ -247,6 +276,7 @@ const sensitivitySlider = document.getElementById('sensitivity-slider');
 const sensitivityVal = document.getElementById('sensitivity-val');
 const toggleBg = document.getElementById('toggle-bg');
 const toggleAutocycle = document.getElementById('toggle-autocycle');
+const toggleBass = document.getElementById('toggle-bass');
 const fileInput = document.getElementById('file-input');
 const themeBg = document.getElementById('theme-bg');
 const themeVideo = document.getElementById('theme-video');
@@ -363,6 +393,9 @@ function disconnectSource() {
     state.stream.getTracks().forEach((track) => track.stop());
     state.stream = null;
   }
+  if (state.dummyAudio) {
+    state.dummyAudio.srcObject = null;
+  }
 }
 
 async function initMic() {
@@ -420,11 +453,18 @@ async function initScreen() {
     disconnectSource();
     showToast('Select a browser tab and enable tab audio.');
     state.stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
+      video: {
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+        frameRate: { ideal: 30, max: 60 }
+      },
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
-        sampleRate: 44100
+        autoGainControl: false,
+        channelCount: 2,
+        sampleRate: 48000,
+        sampleSize: 16
       }
     });
     const audioTracks = state.stream.getAudioTracks();
@@ -436,6 +476,15 @@ async function initScreen() {
     }
     state.source = state.audioCtx.createMediaStreamSource(new MediaStream(audioTracks));
     state.source.connect(state.analyser);
+    
+    // Prevent Chrome from suspending the stream when there's no audio output
+    if (!state.dummyAudio) {
+      state.dummyAudio = new Audio();
+      state.dummyAudio.muted = true;
+    }
+    state.dummyAudio.srcObject = state.stream;
+    state.dummyAudio.play().catch(() => {});
+    
     state.stream.getVideoTracks()[0]?.addEventListener('ended', () => {
       if (state.audioSource === 'screen' && state.running) {
         showToast('Screen sharing ended.');
@@ -584,12 +633,19 @@ function averageEnergy(freqData) {
   return Math.min(1, (sum / state.bufferLength / 255) * state.sensitivity * 3);
 }
 
-function renderLoop() {
+function renderLoop(fromWorker = false) {
   if (!state.running) {
     return;
   }
 
-  state.animFrameId = requestAnimationFrame(renderLoop);
+  if (!fromWorker) {
+    state.animFrameId = requestAnimationFrame(() => renderLoop(false));
+  }
+  
+  if (document.hidden && !fromWorker) {
+    return; // Let the background worker handle it to avoid double rendering
+  }
+
   if (state.paused) {
     return;
   }
@@ -601,6 +657,37 @@ function renderLoop() {
   detectBeat(state.freqData);
   state.energy = averageEnergy(state.freqData);
   state.energySmoothed += (state.energy - state.energySmoothed) * 0.12;
+
+  let bassSum = 0;
+  // Use only the first 8 bins (~180Hz) to capture precise sub-bass hits instead of mid-range frequencies.
+  // This eliminates the "muddy" or delayed feel.
+  let bassBins = Math.min(8, state.bufferLength);
+  for(let i = 0; i < bassBins; i++) {
+      bassSum += state.freqData[i];
+  }
+  let rawBass = (bassSum / bassBins / 255) * state.sensitivity;
+  
+  if (typeof state.bassVelocity === 'undefined') state.bassVelocity = 0;
+  
+  // Spring physics for true bouncy effect
+  const stiffness = 0.85; // High stiffness snaps instantly to the beat, removing delay
+  const damping = 0.4;   // Quick settle for a snappy bounce
+  
+  const force = (rawBass - state.bassSmoothed) * stiffness;
+  state.bassVelocity += force;
+  state.bassVelocity *= damping;
+  state.bassSmoothed += state.bassVelocity;
+  state.bassSmoothed = Math.max(0, state.bassSmoothed); // Prevent collapsing inward
+  
+  const pumpScale = state.bassMode ? 1 + (state.bassSmoothed * 0.2) : 1;
+  state.glowMultiplier = state.bassMode ? 1 + (state.bassSmoothed * 1.2) : 1;
+
+  if (state.bassMode) {
+      document.body.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
+  } else {
+      document.body.style.transform = '';
+  }
+
   energyFill.style.height = `${state.energySmoothed * 100}%`;
   state.beatScale += (1 - state.beatScale) * 0.18;
   state.themePulse *= 0.92;
@@ -615,7 +702,7 @@ function renderLoop() {
   const height = canvas.height;
   ctx.save();
   ctx.translate(width / 2, height / 2);
-  ctx.scale(state.beatScale, state.beatScale);
+  ctx.scale(state.beatScale * pumpScale, state.beatScale * pumpScale);
   ctx.translate(-width / 2, -height / 2);
   drawBackground(ctx, width, height);
   if (state.showBgFx) {
@@ -932,7 +1019,7 @@ function drawBars(c, width, height) {
 
   for (let i = 0; i < count; i += 1) {
     const amp = getAmplitude(i, count);
-    const length = clamp(maxHeight * amp * 1.45, theme.label === 'BLACK & WHITE' ? 3 : 4, maxHeight);
+    const length = clamp(maxHeight * amp * 1.45 * (1 + (state.bassSmoothed || 0) * 0.5), theme.label === 'BLACK & WHITE' ? 3 : 4, maxHeight);
     const x = i * (barWidth + gap);
     const color = paletteColor(i / count, theme.label === 'BLACK & WHITE' ? 0.86 : 1);
 
@@ -973,41 +1060,100 @@ function drawBars(c, width, height) {
   c.restore();
 }
 
+function getAudioIntensity() {
+  if (!state.running || !state.freqData) return 0;
+  
+  let sum = 0;
+  for (let i = 0; i < state.bufferLength; i++) {
+    sum += state.freqData[i];
+  }
+  let avg = sum / state.bufferLength / 255;
+  
+  let bassSum = 0;
+  let bassBins = Math.floor(state.bufferLength * 0.1);
+  for(let i=0; i<bassBins; i++){
+      bassSum += state.freqData[i];
+  }
+  let bassAvg = bassSum / bassBins / 255;
+  
+  return (avg * 0.4 + bassAvg * 0.6) * state.sensitivity;
+}
+
+function smoothAmplitude(prev, current) {
+  return prev * 0.85 + current * 0.15;
+}
+
+function drawFluidLayer(c, cx, cy, baseRadius, multiplier, color, data, blur) {
+  const bins = data.length;
+  const points = [];
+  
+  for (let i = 0; i < bins; i++) {
+    const angle = (Math.PI / 2) - (i / (bins - 1)) * Math.PI;
+    const amp = Math.pow(data[i], 1.5) * multiplier * state.sensitivity * (1 + (state.bassSmoothed || 0) * 0.8);
+    const r = baseRadius + amp;
+    points.push({ x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r });
+  }
+  
+  for (let i = bins - 1; i >= 0; i--) {
+    const angle = (Math.PI / 2) + (i / (bins - 1)) * Math.PI;
+    const amp = Math.pow(data[i], 1.5) * multiplier * state.sensitivity * (1 + (state.bassSmoothed || 0) * 0.8);
+    const r = baseRadius + amp;
+    points.push({ x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r });
+  }
+
+  const loopPoints = [...points, points[0], points[1]];
+
+  c.save();
+  c.fillStyle = color;
+  if (blur > 0) {
+    c.shadowColor = color;
+    c.shadowBlur = blur;
+  }
+  
+  c.beginPath();
+  c.moveTo(loopPoints[0].x, loopPoints[0].y);
+  drawSmoothPath(c, loopPoints, 0.5);
+  c.closePath();
+  
+  // Cut out the inner circle to make it a hollow ring
+  c.moveTo(cx + baseRadius, cy);
+  c.arc(cx, cy, baseRadius, 0, Math.PI * 2, false);
+  
+  c.fill();
+  c.restore();
+}
+
+function drawReactiveBackgroundCircle(c, cx, cy, baseRadius, theme) {
+  if (!state.running || !state.freqData) return;
+  
+  const bins = Math.min(90, state.bufferLength);
+  const data = [];
+  for (let i = 0; i < bins; i++) {
+    data.push(state.freqData[i] / 255);
+  }
+
+  const beatBoost = state.beatActive ? 1.6 : 1.0;
+  const maxAmp = baseRadius * 1.3 * beatBoost; 
+  
+  const rgb = hexToRgb(theme.glowColor);
+  const colorInner = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1.0)`;
+  const colorMid = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`;
+  const colorOuter = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.2)`;
+  
+  const glowMult = state.glowMultiplier || 1;
+  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 1.0, colorOuter, data, 40 * glowMult);
+  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.6, colorMid, data, 15 * glowMult);
+  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.3, colorInner, data, 0);
+}
+
 function drawRadial(c, width, height) {
   const theme = themeConfig();
   const cx = width / 2;
   const cy = height / 2;
   const dim = Math.min(width, height);
   const ringRadius = dim * (theme.road ? 0.18 : 0.2);
-  const outerMax = dim * (theme.label === 'ROCK MODE' ? 0.34 : 0.26);
-  const innerMax = dim * 0.08;
-  const spokes = theme.label === 'BLACK & WHITE' ? 210 : 170;
 
-  for (let i = 0; i < spokes; i += 1) {
-    const angle = (i / spokes) * Math.PI * 2 + state.radialAngle;
-    const amp = getAmplitude(i, spokes);
-    const outer = Math.max(3, amp * outerMax * 1.6);
-    const inner = Math.max(1, amp * innerMax * 1.2);
-    const x1 = cx + Math.cos(angle) * (ringRadius - inner);
-    const y1 = cy + Math.sin(angle) * (ringRadius - inner);
-    const x2 = cx + Math.cos(angle) * (ringRadius + outer);
-    const y2 = cy + Math.sin(angle) * (ringRadius + outer);
-    c.save();
-    c.strokeStyle = paletteColor(i / spokes, theme.label === 'BLACK & WHITE' ? 0.9 : 1);
-    c.lineWidth = theme.lineWidth * (theme.label === 'BLACK & WHITE' ? 0.7 : 1);
-    c.lineCap = theme.label === 'BLACK & WHITE' ? 'square' : 'round';
-    if (theme.label !== 'BLACK & WHITE') {
-      c.shadowColor = c.strokeStyle;
-      c.shadowBlur = 6 + outer * 0.1 * theme.glowIntensity;
-    }
-    c.beginPath();
-    c.moveTo(x1, y1);
-    c.lineTo(x2, y2);
-    c.stroke();
-    c.restore();
-  }
-
-  drawRadialWave(c, cx, cy, ringRadius + outerMax * 0.6, theme);
+  drawReactiveBackgroundCircle(c, cx, cy, ringRadius, theme);
   drawCenterOrb(c, cx, cy, ringRadius * 0.64, theme);
 }
 
@@ -1018,7 +1164,7 @@ function drawRadialWave(c, cx, cy, radius, theme) {
   for (let i = 0; i <= points; i += 1) {
     const sample = state.timeData[i % points] / 128 - 1;
     const angle = (i / points) * Math.PI * 2 - Math.PI / 2 - state.radialAngle * 0.4;
-    const wobble = sample * radius * 0.24 * state.sensitivity * (theme.label === 'BLACK & WHITE' ? 1.4 : 0.8);
+    const wobble = sample * radius * 0.24 * state.sensitivity * (theme.label === 'BLACK & WHITE' ? 1.4 : 0.8) * (1 + (state.bassSmoothed || 0) * 1.5);
     const r = radius + wobble;
     const x = cx + Math.cos(angle) * r;
     const y = cy + Math.sin(angle) * r;
@@ -1073,7 +1219,7 @@ function drawWave(c, width, height) {
     const sample = state.timeData[i] / 128 - 1;
     points.push({
       x: i * step,
-      y: centerY + sample * ampScale * state.sensitivity
+      y: centerY + sample * ampScale * state.sensitivity * (1 + (state.bassSmoothed || 0) * 0.6)
     });
   }
 
@@ -1268,7 +1414,6 @@ function drawRockSilhouettes(c, width, height) {
   c.save();
   c.globalAlpha = 0.22;
   c.fillStyle = 'rgba(16, 8, 20, 0.84)';
-  drawGuitar(c, width * 0.14, height * 0.58, 0.68);
   drawDrumKit(c, width * 0.74, height * 0.66, 0.8);
   drawPiano(c, width * 0.42, height * 0.78, 0.8);
   c.restore();
@@ -1530,7 +1675,16 @@ async function requestPip() {
   if (!video) {
     video = document.createElement('video');
     video.id = 'pip-video';
-    video.style.display = 'none';
+    video.style.position = 'fixed';
+    video.style.bottom = '0';
+    video.style.right = '0';
+    video.style.width = '1px';
+    video.style.height = '1px';
+    video.style.opacity = '0.01';
+    video.style.pointerEvents = 'none';
+    video.style.zIndex = '-9999';
+    video.muted = true;
+    video.playsInline = true;
     document.body.appendChild(video);
   }
   try {
@@ -1544,7 +1698,7 @@ async function requestPip() {
 }
 
 function applyTheme(themeName, silent = false) {
-  const nextTheme = THEMES[themeName] ? themeName : 'classic';
+  const nextTheme = THEMES[themeName] ? themeName : 'default';
   state.theme = nextTheme;
   const theme = themeConfig();
   state.beatCooldownMax = theme.beatCooldownMax;
@@ -1553,6 +1707,7 @@ function applyTheme(themeName, silent = false) {
   themeTaglineEl.textContent = theme.tagline;
 
   const themeBgUrls = {
+    default: 'url("main-bg.jpg")',
     classic: 'url("https://images.unsplash.com/photo-1507838153414-b4b713384a76?q=80&w=1920&auto=format&fit=crop")',
     bw: 'url("https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?q=80&w=1920&auto=format&fit=crop")',
     rock: 'url("https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?q=80&w=1920&auto=format&fit=crop")',
@@ -1713,6 +1868,18 @@ function buildIdleScreen() {
 }
 
 function handleUi() {
+  const introScreen = document.getElementById('intro-screen');
+  const btnEnter = document.getElementById('btn-enter');
+  
+  if (btnEnter && introScreen) {
+    btnEnter.addEventListener('click', () => {
+      introScreen.classList.add('hidden');
+      if (state.audioCtx && state.audioCtx.state === 'suspended') {
+        state.audioCtx.resume();
+      }
+    });
+  }
+
   sourceButtons.forEach((button) => {
     button.addEventListener('click', async () => {
       sourceButtons.forEach((item) => item.classList.remove('active'));
@@ -1881,6 +2048,10 @@ function handleUi() {
     state.autoCycle = toggleAutocycle.checked;
   });
 
+  toggleBass.addEventListener('change', () => {
+    state.bassMode = toggleBass.checked;
+  });
+
   document.addEventListener('click', () => {
     if (state.audioCtx && state.audioCtx.state === 'suspended') {
       state.audioCtx.resume();
@@ -1893,9 +2064,29 @@ window.state = state;
 (function boot() {
   buildIdleScreen();
   handleUi();
-  applyTheme('classic', true);
+  applyTheme('default', true);
   initBgParticles();
   initAmbientParticles();
   updateMiniLabel();
   idleAnimation();
+  
+  // Background worker to keep PIP alive when tab is hidden
+  const code = `
+    let timer;
+    self.onmessage = function(e) {
+      if (e.data === 'start') {
+        timer = setInterval(() => self.postMessage('tick'), 30);
+      } else if (e.data === 'stop') {
+        clearInterval(timer);
+      }
+    };
+  `;
+  const blob = new Blob([code], { type: 'application/javascript' });
+  const bgWorker = new Worker(URL.createObjectURL(blob));
+  bgWorker.onmessage = () => {
+    if (document.hidden && state.running && !state.paused) {
+      renderLoop(true);
+    }
+  };
+  bgWorker.postMessage('start');
 })();

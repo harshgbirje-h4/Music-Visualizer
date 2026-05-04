@@ -4,9 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SPECTR - Audio Visualizer</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=1.2" />
 </head>
 <body data-theme="classic">
+  <div id="intro-screen">
+    <div class="intro-bg-image"></div>
+    <div class="intro-content">
+      <div id="intro-title">SPECTR</div>
+      <button id="btn-enter" type="button">ENTER EXPERIENCE</button>
+    </div>
+  </div>
+
   <div id="theme-bg"></div>
   <div id="beat-flash"></div>
   <video id="theme-video" muted loop playsinline class="hidden"></video>
@@ -110,6 +118,11 @@
         <span class="toggle-track"><span class="toggle-thumb"></span></span>
         AUTO COLOR
       </label>
+      <label class="toggle-label">
+        <input type="checkbox" id="toggle-bass" checked />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        BASS MODE
+      </label>
     </div>
   </div>
 
@@ -125,6 +138,6 @@
     <div id="mini-source-label">NO SIGNAL</div>
   </div>
 
-  <script src="script.js"></script>
+  <script src="script.js?v=1.1"></script>
 </body>
 </html>
