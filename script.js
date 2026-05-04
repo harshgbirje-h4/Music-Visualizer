@@ -251,7 +251,12 @@ const state = {
   transitionTimer: null,
   idleFrameId: null,
   miniWindow: null,
-  currentChillVideo: Math.random() < 0.5 ? 0 : 1
+  currentChillVideo: Math.random() < 0.5 ? 0 : 1,
+  bgImageCache: {},
+  currentBgImg: null,
+  pipWindow: null,
+  pipCtx: null,
+  pipCanvas: null
 };
 
 const canvas = document.getElementById('viz-canvas');
@@ -717,9 +722,40 @@ function renderLoop(fromWorker = false) {
   } else {
     bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
   }
-  if (!miniOverlayEl.classList.contains('hidden')) {
-    drawMini();
+  const pipVideo = document.getElementById('pip-video');
+  const isPipActive = pipVideo && document.pictureInPictureElement === pipVideo;
+  if (!miniOverlayEl.classList.contains('hidden') || isPipActive) {
+    drawMini(pumpScale);
+    if (state.bassMode) {
+      miniCanvas.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
+    } else {
+      miniCanvas.style.transform = '';
+    }
   }
+  
+  const isDocPipActive = !!state.pipWindow;
+  if (isDocPipActive && state.pipCtx && state.pipCanvas) {
+    const pw = state.pipCanvas.width;
+    const ph = state.pipCanvas.height;
+    
+    state.pipCtx.save();
+    state.pipCtx.translate(pw / 2, ph / 2);
+    state.pipCtx.scale(state.beatScale * pumpScale, state.beatScale * pumpScale);
+    state.pipCtx.translate(-pw / 2, -ph / 2);
+
+    drawBackground(state.pipCtx, pw, ph);
+    drawMode(state.pipCtx, pw, ph);
+    drawThemeForeground(state.pipCtx, pw, ph);
+    
+    state.pipCtx.restore();
+    
+    if (state.bassMode) {
+      state.pipCanvas.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
+    } else {
+      state.pipCanvas.style.transform = '';
+    }
+  }
+
   syncPopup();
 
   if (state.audioSource === 'file' && audioEl.duration) {
@@ -727,6 +763,30 @@ function renderLoop(fromWorker = false) {
     fpProgressBar.style.width = `${pct}%`;
     fpTime.textContent = `${fmt(audioEl.currentTime)} / ${fmt(audioEl.duration)}`;
   }
+}
+
+function drawImageCover(ctx, img, cw, ch) {
+  let imgW = img.naturalWidth || img.videoWidth;
+  let imgH = img.naturalHeight || img.videoHeight;
+  if (!imgW || !imgH) return;
+  
+  const imgRatio = imgW / imgH;
+  const canvasRatio = cw / ch;
+  let drawWidth, drawHeight, offsetX, offsetY;
+
+  if (imgRatio > canvasRatio) {
+    drawHeight = ch;
+    drawWidth = ch * imgRatio;
+    offsetX = (cw - drawWidth) / 2;
+    offsetY = 0;
+  } else {
+    drawWidth = cw;
+    drawHeight = cw / imgRatio;
+    offsetX = 0;
+    offsetY = (ch - drawHeight) / 2;
+  }
+
+  ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 }
 
 function drawBackground(c, width, height) {
@@ -741,6 +801,19 @@ function drawBackground(c, width, height) {
   bg.addColorStop(1, `rgba(${c3.r}, ${c3.g}, ${c3.b}, 0.8)`);
   
   c.clearRect(0, 0, width, height);
+  
+  if (c === miniCtx || c === state.pipCtx) {
+    if (state.theme === 'chill' || state.theme === 'study') {
+      if (themeVideo && themeVideo.readyState >= 2 && !themeVideo.paused) {
+        drawImageCover(c, themeVideo, width, height);
+      }
+    } else if (state.theme === 'phonk' && themeImage && themeImage.complete && themeImage.naturalWidth > 0) {
+      drawImageCover(c, themeImage, width, height);
+    } else if (state.currentBgImg && state.currentBgImg.complete && state.currentBgImg.naturalWidth > 0) {
+      drawImageCover(c, state.currentBgImg, width, height);
+    }
+  }
+
   c.fillStyle = bg;
   c.fillRect(0, 0, width, height);
 
@@ -1526,12 +1599,20 @@ function drawCar(c, x, y, scale) {
   c.restore();
 }
 
-function drawMini() {
+function drawMini(pumpScale = 1) {
   const width = miniCanvas.width;
   const height = miniCanvas.height;
+
+  miniCtx.save();
+  miniCtx.translate(width / 2, height / 2);
+  miniCtx.scale(state.beatScale * pumpScale, state.beatScale * pumpScale);
+  miniCtx.translate(-width / 2, -height / 2);
+
   drawBackground(miniCtx, width, height);
   drawMode(miniCtx, width, height);
   drawThemeForeground(miniCtx, width, height);
+
+  miniCtx.restore();
 }
 
 function syncPopup() {
@@ -1667,6 +1748,100 @@ function toggleMiniOverlay() {
 })();
 
 async function requestPip() {
+  if ('documentPictureInPicture' in window) {
+    try {
+      const pipWindow = await window.documentPictureInPicture.requestWindow({
+        width: 600,
+        height: 380
+      });
+      
+      pipWindow.document.body.innerHTML = `
+        <style>
+          body { margin: 0; background: #000; display: flex; flex-direction: column; height: 100vh; font-family: monospace; color: #fff; overflow: hidden; }
+          #canvas-container { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #050505; overflow: hidden; }
+          canvas { width: 100%; height: 100%; display: block; object-fit: cover; transform-origin: center center; }
+          #pip-controls { padding: 8px; background: #111; display: flex; gap: 8px; align-items: center; justify-content: center; border-top: 1px solid #222; flex-wrap: wrap; }
+          select, button { background: #222; color: #fff; border: 1px solid #444; padding: 6px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; cursor: pointer; outline: none; }
+          select:hover, button:hover { background: #333; border-color: #666; }
+          button { font-weight: bold; color: var(--acc1, #5f9cff); border-color: #3a5c99; }
+        </style>
+        <div id="canvas-container">
+          <canvas id="pip-canvas" width="600" height="320"></canvas>
+        </div>
+        <div id="pip-controls">
+          <button id="pip-pause">${state.paused ? 'PLAY' : 'PAUSE'}</button>
+          <button id="pip-bass">${state.bassMode ? 'BASS: ON' : 'BASS: OFF'}</button>
+          <select id="pip-mode">
+            <option value="bars" ${state.mode === 'bars' ? 'selected' : ''}>MODE: BARS</option>
+            <option value="circle" ${state.mode === 'circle' ? 'selected' : ''}>MODE: RADIAL</option>
+            <option value="wave" ${state.mode === 'wave' ? 'selected' : ''}>MODE: WAVE</option>
+          </select>
+          <select id="pip-theme">
+            <option value="classic" ${state.theme === 'classic' ? 'selected' : ''}>THEME: CLASSIC</option>
+            <option value="bw" ${state.theme === 'bw' ? 'selected' : ''}>THEME: B&W</option>
+            <option value="rock" ${state.theme === 'rock' ? 'selected' : ''}>THEME: ROCK</option>
+            <option value="memory" ${state.theme === 'memory' ? 'selected' : ''}>THEME: MEMORY</option>
+            <option value="chill" ${state.theme === 'chill' ? 'selected' : ''}>THEME: CHILL</option>
+            <option value="study" ${state.theme === 'study' ? 'selected' : ''}>THEME: STUDY</option>
+            <option value="phonk" ${state.theme === 'phonk' ? 'selected' : ''}>THEME: PHONK</option>
+          </select>
+        </div>
+      `;
+      
+      const pipCanvas = pipWindow.document.getElementById('pip-canvas');
+      const pipCtx = pipCanvas.getContext('2d');
+      state.pipWindow = pipWindow;
+      state.pipCtx = pipCtx;
+      state.pipCanvas = pipCanvas;
+      
+      const resizePip = () => {
+        const container = pipWindow.document.getElementById('canvas-container');
+        if (container && pipCanvas) {
+          pipCanvas.width = container.clientWidth;
+          pipCanvas.height = container.clientHeight;
+        }
+      };
+      pipWindow.addEventListener('resize', resizePip);
+      setTimeout(resizePip, 0);
+      
+      pipWindow.document.getElementById('pip-pause').addEventListener('click', (e) => {
+        btnPause.click();
+        e.target.textContent = state.paused ? 'PLAY' : 'PAUSE';
+      });
+      
+      pipWindow.document.getElementById('pip-bass').addEventListener('click', (e) => {
+        const tb = document.getElementById('toggle-bass');
+        if (tb) {
+          tb.checked = !tb.checked;
+          tb.dispatchEvent(new Event('change'));
+          e.target.textContent = tb.checked ? 'BASS: ON' : 'BASS: OFF';
+        }
+      });
+      
+      pipWindow.document.getElementById('pip-mode').addEventListener('change', (e) => {
+        const newMode = e.target.value;
+        const modeBtn = document.querySelector(`.mode-btn[data-mode="${newMode}"]`);
+        if (modeBtn) modeBtn.click();
+      });
+      
+      pipWindow.document.getElementById('pip-theme').addEventListener('change', (e) => {
+        const newTheme = e.target.value;
+        const themeBtn = document.querySelector(`.theme-btn[data-theme="${newTheme}"]`);
+        if (themeBtn) themeBtn.click();
+      });
+      
+      pipWindow.addEventListener('pagehide', () => {
+        state.pipWindow = null;
+        state.pipCtx = null;
+        state.pipCanvas = null;
+      });
+      return;
+    } catch (error) {
+      console.warn('Document PiP failed or denied, falling back to Video PiP.', error);
+    }
+  }
+
+  // Fallback to Standard Video PiP
   if (!document.pictureInPictureEnabled) {
     showToast('Picture-in-Picture is not supported here.');
     return;
@@ -1688,10 +1863,10 @@ async function requestPip() {
     document.body.appendChild(video);
   }
   try {
-    video.srcObject = canvas.captureStream(30);
+    video.srcObject = miniCanvas.captureStream(30);
     await video.play();
     await video.requestPictureInPicture();
-    showToast('Picture-in-Picture started.');
+    showToast('Picture-in-Picture started (Fallback Mode).');
   } catch (error) {
     showToast(`Picture-in-Picture failed: ${error.message}`);
   }
@@ -1707,14 +1882,27 @@ function applyTheme(themeName, silent = false) {
   themeTaglineEl.textContent = theme.tagline;
 
   const themeBgUrls = {
-    default: 'url("main-bg.jpg")',
-    classic: 'url("https://images.unsplash.com/photo-1507838153414-b4b713384a76?q=80&w=1920&auto=format&fit=crop")',
-    bw: 'url("https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?q=80&w=1920&auto=format&fit=crop")',
-    rock: 'url("https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?q=80&w=1920&auto=format&fit=crop")',
-    memory: 'url("memory_bg.jpg")'
+    default: 'main-bg.jpg',
+    classic: 'https://images.unsplash.com/photo-1507838153414-b4b713384a76?q=80&w=1920&auto=format&fit=crop',
+    bw: 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?q=80&w=1920&auto=format&fit=crop',
+    rock: 'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?q=80&w=1920&auto=format&fit=crop',
+    memory: 'memory_bg.jpg'
   };
+  
+  if (themeBgUrls[nextTheme]) {
+    if (!state.bgImageCache[nextTheme]) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = themeBgUrls[nextTheme];
+      state.bgImageCache[nextTheme] = img;
+    }
+    state.currentBgImg = state.bgImageCache[nextTheme];
+  } else {
+    state.currentBgImg = null;
+  }
+  
   if (themeBg) {
-    themeBg.style.backgroundImage = themeBgUrls[nextTheme] || '';
+    themeBg.style.backgroundImage = themeBgUrls[nextTheme] ? `url("${themeBgUrls[nextTheme]}")` : '';
   }
 
   if (themeVideo) {
@@ -1749,6 +1937,11 @@ function applyTheme(themeName, silent = false) {
   themeButtons.forEach((button) => {
     button.classList.toggle('active', button.dataset.theme === nextTheme);
   });
+  
+  if (state.pipWindow) {
+    const pipThemeSel = state.pipWindow.document.getElementById('pip-theme');
+    if (pipThemeSel) pipThemeSel.value = nextTheme;
+  }
 
   if (!silent) {
     document.body.classList.add('theme-transitioning');
@@ -1941,6 +2134,12 @@ function handleUi() {
   btnPause.addEventListener('click', () => {
     state.paused = !state.paused;
     btnPause.textContent = state.paused ? 'PLAY' : 'PAUSE';
+    
+    if (state.pipWindow) {
+      const pipPauseBtn = state.pipWindow.document.getElementById('pip-pause');
+      if (pipPauseBtn) pipPauseBtn.textContent = state.paused ? 'PLAY' : 'PAUSE';
+    }
+
     if (state.audioSource === 'file') {
       if (state.paused) {
         audioEl.pause();
@@ -2026,6 +2225,11 @@ function handleUi() {
       state.mode = button.dataset.mode;
       modeButtons.forEach((item) => item.classList.remove('active'));
       button.classList.add('active');
+      
+      if (state.pipWindow) {
+        const pipModeSel = state.pipWindow.document.getElementById('pip-mode');
+        if (pipModeSel) pipModeSel.value = state.mode;
+      }
     });
   });
 
@@ -2050,6 +2254,10 @@ function handleUi() {
 
   toggleBass.addEventListener('change', () => {
     state.bassMode = toggleBass.checked;
+    if (state.pipWindow) {
+      const pipBass = state.pipWindow.document.getElementById('pip-bass');
+      if (pipBass) pipBass.textContent = state.bassMode ? 'BASS: ON' : 'BASS: OFF';
+    }
   });
 
   document.addEventListener('click', () => {
@@ -2070,14 +2278,20 @@ window.state = state;
   updateMiniLabel();
   idleAnimation();
   
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.setActionHandler('play', () => {
+      if (state.paused) btnPause.click();
+    });
+    navigator.mediaSession.setActionHandler('pause', () => {
+      if (!state.paused) btnPause.click();
+    });
+  }
+  
   // Background worker to keep PIP alive when tab is hidden
   const code = `
-    let timer;
     self.onmessage = function(e) {
-      if (e.data === 'start') {
-        timer = setInterval(() => self.postMessage('tick'), 30);
-      } else if (e.data === 'stop') {
-        clearInterval(timer);
+      if (e.data === 'ping') {
+        setTimeout(() => self.postMessage('tick'), 30);
       }
     };
   `;
@@ -2086,7 +2300,12 @@ window.state = state;
   bgWorker.onmessage = () => {
     if (document.hidden && state.running && !state.paused) {
       renderLoop(true);
+      bgWorker.postMessage('ping');
     }
   };
-  bgWorker.postMessage('start');
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state.running && !state.paused) {
+      bgWorker.postMessage('ping');
+    }
+  });
 })();
