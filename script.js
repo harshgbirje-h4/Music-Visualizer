@@ -131,6 +131,32 @@ const THEMES = {
     scanlines: false,
     silhouettes: false
   },
+  custom: {
+    label: 'CUSTOM MODE',
+    tagline: 'Your personal vibe',
+    palette: ['#00ffcc', '#00ccff', '#0099cc', '#006666'],
+    glowColor: '#00ffcc',
+    background: ['#000000', '#0a0a0a', '#111111'],
+    analyserSmoothing: 0.65,
+    beatScaleBoost: 0.02,
+    beatFlashDuration: 100,
+    beatCooldownMax: 15,
+    barSharpness: 1.0,
+    lineWidth: 2.5,
+    glowIntensity: 0.8,
+    amplitude: 0.8,
+    animationSpeed: 0.6,
+    bgParticleCount: 50,
+    bgParticleSpeed: 0.6,
+    particleTrail: 0.15,
+    waveformSmoothness: 0.3,
+    staticNoise: 0.01,
+    burstCount: 8,
+    road: false,
+    radio: false,
+    scanlines: false,
+    silhouettes: false
+  },
   chill: {
     label: 'CHILL MODE',
     tagline: 'Relaxing night drives',
@@ -256,7 +282,9 @@ const state = {
   currentBgImg: null,
   pipWindow: null,
   pipCtx: null,
-  pipCanvas: null
+  pipCanvas: null,
+  customBgMediaUrl: null,
+  customBgMediaType: null
 };
 
 const canvas = document.getElementById('viz-canvas');
@@ -328,6 +356,79 @@ function hexToRgb(hex) {
     g: (int >> 8) & 255,
     b: int & 255
   };
+}
+
+function extractColorFromMedia(mediaElement) {
+  try {
+    const c = document.createElement('canvas');
+    const cx = c.getContext('2d');
+    c.width = 64;
+    c.height = 64;
+    cx.drawImage(mediaElement, 0, 0, 64, 64);
+    const data = cx.getImageData(0, 0, 64, 64).data;
+    
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i+3] > 0) {
+         r += data[i];
+         g += data[i+1];
+         b += data[i+2];
+         count++;
+      }
+    }
+    if (count === 0) return '#00ffcc';
+    
+    r = Math.floor(r / count);
+    g = Math.floor(g / count);
+    b = Math.floor(b / count);
+    
+    const max = Math.max(r, g, b);
+    if (max < 150 && max > 0) {
+      const scale = 255 / max;
+      r = Math.min(255, Math.floor(r * scale));
+      g = Math.min(255, Math.floor(g * scale));
+      b = Math.min(255, Math.floor(b * scale));
+    }
+    
+    const toHex = (n) => n.toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  } catch(e) {
+    return '#00ffcc';
+  }
+}
+
+function updateCustomThemeColor(hex) {
+  const custom = THEMES.custom;
+  custom.glowColor = hex;
+  custom.palette[0] = hex;
+  
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  
+  const toHex = (r,g,b) => `#${Math.min(255,Math.max(0,Math.floor(r))).toString(16).padStart(2,'0')}${Math.min(255,Math.max(0,Math.floor(g))).toString(16).padStart(2,'0')}${Math.min(255,Math.max(0,Math.floor(b))).toString(16).padStart(2,'0')}`;
+  
+  custom.palette[1] = toHex(r*0.8, g*1.2, b*1.2);
+  custom.palette[2] = toHex(r*0.6, g*0.8, b*1.5);
+  custom.palette[3] = toHex(r*0.4, g*0.6, b*0.8);
+  
+  custom.background[0] = toHex(r*0.02, g*0.02, b*0.02);
+  custom.background[1] = toHex(r*0.06, g*0.06, b*0.06);
+  custom.background[2] = toHex(r*0.1, g*0.1, b*0.1);
+  
+  if (state.theme === 'custom') {
+    document.body.style.setProperty('--acc1', hex);
+    document.body.style.setProperty('--glow', `rgba(${r}, ${g}, ${b}, 0.3)`);
+    document.body.style.setProperty('--glow-hi', `rgba(${r}, ${g}, ${b}, 0.6)`);
+    document.body.style.setProperty('--bg', custom.background[0]);
+    document.body.style.setProperty('--bg-soft', custom.background[1]);
+    document.body.style.setProperty('--panel', `rgba(${r*0.08}, ${g*0.08}, ${b*0.08}, 0.84)`);
+    
+    applyTheme('custom', true);
+  }
+  syncPipColors();
+  const cp = document.getElementById('custom-color-picker');
+  if (cp) cp.value = hex;
 }
 
 function mix(a, b, t) {
@@ -724,8 +825,9 @@ function renderLoop(fromWorker = false) {
   }
   const pipVideo = document.getElementById('pip-video');
   const isPipActive = pipVideo && document.pictureInPictureElement === pipVideo;
-  if (!miniOverlayEl.classList.contains('hidden') || isPipActive) {
-    drawMini(pumpScale);
+  
+  if (!miniOverlayEl.classList.contains('hidden') || pipVideo) {
+    renderPip(miniCtx, miniCanvas.width, miniCanvas.height);
     if (state.bassMode) {
       miniCanvas.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
     } else {
@@ -733,22 +835,8 @@ function renderLoop(fromWorker = false) {
     }
   }
   
-  const isDocPipActive = !!state.pipWindow;
-  if (isDocPipActive && state.pipCtx && state.pipCanvas) {
-    const pw = state.pipCanvas.width;
-    const ph = state.pipCanvas.height;
-    
-    state.pipCtx.save();
-    state.pipCtx.translate(pw / 2, ph / 2);
-    state.pipCtx.scale(state.beatScale * pumpScale, state.beatScale * pumpScale);
-    state.pipCtx.translate(-pw / 2, -ph / 2);
-
-    drawBackground(state.pipCtx, pw, ph);
-    drawMode(state.pipCtx, pw, ph);
-    drawThemeForeground(state.pipCtx, pw, ph);
-    
-    state.pipCtx.restore();
-    
+  if (state.pipWindow && state.pipCtx && state.pipCanvas) {
+    renderPip(state.pipCtx, state.pipCanvas.width, state.pipCanvas.height);
     if (state.bassMode) {
       state.pipCanvas.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
     } else {
@@ -766,8 +854,8 @@ function renderLoop(fromWorker = false) {
 }
 
 function drawImageCover(ctx, img, cw, ch) {
-  let imgW = img.naturalWidth || img.videoWidth;
-  let imgH = img.naturalHeight || img.videoHeight;
+  let imgW = img.naturalWidth || img.videoWidth || img.width;
+  let imgH = img.naturalHeight || img.videoHeight || img.height;
   if (!imgW || !imgH) return;
   
   const imgRatio = imgW / imgH;
@@ -787,6 +875,17 @@ function drawImageCover(ctx, img, cw, ch) {
   }
 
   ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+}
+
+function syncPipColors() {
+  if (!state.pipWindow) return;
+  const computed = getComputedStyle(document.body);
+  const root = state.pipWindow.document.documentElement;
+  const vars = ['--bg', '--bg-soft', '--panel', '--border', '--text', '--acc1'];
+  vars.forEach(v => {
+    let val = computed.getPropertyValue(v).trim();
+    if (val) root.style.setProperty(v, val);
+  });
 }
 
 function drawBackground(c, width, height) {
@@ -1219,6 +1318,29 @@ function drawReactiveBackgroundCircle(c, cx, cy, baseRadius, theme) {
   drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.3, colorInner, data, 0);
 }
 
+function drawReactiveBackgroundCircle(c, cx, cy, baseRadius, theme) {
+  if (!state.running || !state.freqData) return;
+  
+  const bins = Math.min(90, state.bufferLength);
+  const data = [];
+  for (let i = 0; i < bins; i++) {
+    data.push(state.freqData[i] / 255);
+  }
+
+  const beatBoost = state.beatActive ? 1.6 : 1.0;
+  const maxAmp = baseRadius * 1.3 * beatBoost; 
+  
+  const rgb = hexToRgb(theme.glowColor);
+  const colorInner = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1.0)`;
+  const colorMid = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`;
+  const colorOuter = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.2)`;
+  
+  const glowMult = state.glowMultiplier || 1;
+  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 1.0, colorOuter, data, 40 * glowMult);
+  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.6, colorMid, data, 15 * glowMult);
+  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.3, colorInner, data, 0);
+}
+
 function drawRadial(c, width, height) {
   const theme = themeConfig();
   const cx = width / 2;
@@ -1488,7 +1610,6 @@ function drawRockSilhouettes(c, width, height) {
   c.globalAlpha = 0.22;
   c.fillStyle = 'rgba(16, 8, 20, 0.84)';
   drawDrumKit(c, width * 0.74, height * 0.66, 0.8);
-  drawPiano(c, width * 0.42, height * 0.78, 0.8);
   c.restore();
 
   if (state.beatActive) {
@@ -1534,19 +1655,7 @@ function drawDrumKit(c, x, y, scale) {
   c.restore();
 }
 
-function drawPiano(c, x, y, scale) {
-  c.save();
-  c.translate(x, y);
-  c.scale(scale, scale);
-  c.fillRect(0, 0, 140, 36);
-  c.clearRect(10, 6, 8, 24);
-  c.clearRect(30, 6, 8, 24);
-  c.clearRect(58, 6, 8, 24);
-  c.clearRect(78, 6, 8, 24);
-  c.clearRect(98, 6, 8, 24);
-  c.clearRect(118, 6, 8, 24);
-  c.restore();
-}
+
 
 function drawMemoryHighway(c, width, height) {
   const horizon = height * 0.62;
@@ -1599,20 +1708,25 @@ function drawCar(c, x, y, scale) {
   c.restore();
 }
 
-function drawMini(pumpScale = 1) {
-  const width = miniCanvas.width;
-  const height = miniCanvas.height;
+function renderPip(ctxToRender, width, height) {
+  ctxToRender.clearRect(0, 0, width, height);
 
-  miniCtx.save();
-  miniCtx.translate(width / 2, height / 2);
-  miniCtx.scale(state.beatScale * pumpScale, state.beatScale * pumpScale);
-  miniCtx.translate(-width / 2, -height / 2);
+  if (state.theme === 'chill' || state.theme === 'study' || (state.theme === 'custom' && state.customBgMediaType === 'video')) {
+    if (themeVideo && themeVideo.readyState >= 2 && !themeVideo.paused) {
+      drawImageCover(ctxToRender, themeVideo, width, height);
+    }
+  } else if (state.theme === 'phonk' && themeImage && themeImage.complete) {
+    drawImageCover(ctxToRender, themeImage, width, height);
+  } else if (state.currentBgImg && state.currentBgImg.complete) {
+    drawImageCover(ctxToRender, state.currentBgImg, width, height);
+  } else {
+    const theme = THEMES[state.theme] || THEMES.default;
+    ctxToRender.fillStyle = theme.background[0] || '#000';
+    ctxToRender.fillRect(0, 0, width, height);
+  }
 
-  drawBackground(miniCtx, width, height);
-  drawMode(miniCtx, width, height);
-  drawThemeForeground(miniCtx, width, height);
-
-  miniCtx.restore();
+  drawImageCover(ctxToRender, bgCanvas, width, height);
+  drawImageCover(ctxToRender, canvas, width, height);
 }
 
 function syncPopup() {
@@ -1624,9 +1738,7 @@ function syncPopup() {
   if (!popupCanvas || !popupCtx) {
     return;
   }
-  drawBackground(popupCtx, popupCanvas.width, popupCanvas.height);
-  drawMode(popupCtx, popupCanvas.width, popupCanvas.height);
-  drawThemeForeground(popupCtx, popupCanvas.width, popupCanvas.height);
+  renderPip(popupCtx, popupCanvas.width, popupCanvas.height);
 }
 
 function openMiniWindow() {
@@ -1645,9 +1757,10 @@ function openMiniWindow() {
   }
   popup.document.write(`<!DOCTYPE html><html><head><title>SPECTR MINI</title>
   <style>
+    :root { --bg: #050505; --panel: rgba(0,0,0,.45); --text: #d7ebff; }
     *{box-sizing:border-box;margin:0;padding:0}
-    html,body{width:100%;height:100%;overflow:hidden;background:#050505;color:#d7ebff;font-family:monospace}
-    #title,#label{position:fixed;left:0;right:0;text-align:center;background:rgba(0,0,0,.45);letter-spacing:.16em}
+    html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:monospace}
+    #title,#label{position:fixed;left:0;right:0;text-align:center;background:var(--panel);letter-spacing:.16em}
     #title{top:0;padding:6px 0;font-size:10px}
     #label{bottom:0;padding:5px 0;font-size:9px}
     canvas{display:block}
@@ -1675,6 +1788,7 @@ function openMiniWindow() {
   window.setTimeout(() => {
     popup._canvas = popup.document.getElementById('mc');
     popup._ctx = popup._canvas?.getContext('2d');
+    syncPipColors();
   }, 300);
   state.miniWindow = popup;
   popup.addEventListener('beforeunload', () => {
@@ -1747,23 +1861,25 @@ function toggleMiniOverlay() {
   });
 })();
 
-async function requestPip() {
+async function requestPip(isAuto = false) {
   if ('documentPictureInPicture' in window) {
     try {
       const pipWindow = await window.documentPictureInPicture.requestWindow({
-        width: 600,
-        height: 380
+        width: 400,
+        height: 280
       });
       
       pipWindow.document.body.innerHTML = `
         <style>
-          body { margin: 0; background: #000; display: flex; flex-direction: column; height: 100vh; font-family: monospace; color: #fff; overflow: hidden; }
-          #canvas-container { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #050505; overflow: hidden; }
+          :root { --bg: #000; --panel: #111; --text: #fff; --acc1: #5f9cff; --border: #444; }
+          body { margin: 0; background: var(--bg); display: flex; flex-direction: column; height: 100vh; font-family: monospace; color: var(--text); overflow: hidden; }
+          #canvas-container { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); overflow: hidden; }
           canvas { width: 100%; height: 100%; display: block; object-fit: cover; transform-origin: center center; }
-          #pip-controls { padding: 8px; background: #111; display: flex; gap: 8px; align-items: center; justify-content: center; border-top: 1px solid #222; flex-wrap: wrap; }
-          select, button { background: #222; color: #fff; border: 1px solid #444; padding: 6px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; cursor: pointer; outline: none; }
-          select:hover, button:hover { background: #333; border-color: #666; }
-          button { font-weight: bold; color: var(--acc1, #5f9cff); border-color: #3a5c99; }
+          #pip-controls { padding: 8px; background: var(--panel); display: flex; gap: 8px; align-items: center; justify-content: center; border-top: 1px solid var(--border); flex-wrap: wrap; }
+          select, button { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; cursor: pointer; outline: none; transition: all 0.2s; }
+          select:hover, button:hover { border-color: var(--acc1); color: var(--acc1); }
+          button { font-weight: bold; color: var(--acc1); border-color: var(--acc1); }
+          option { background: var(--bg); color: var(--text); font-family: monospace; }
         </style>
         <div id="canvas-container">
           <canvas id="pip-canvas" width="600" height="320"></canvas>
@@ -1771,6 +1887,7 @@ async function requestPip() {
         <div id="pip-controls">
           <button id="pip-pause">${state.paused ? 'PLAY' : 'PAUSE'}</button>
           <button id="pip-bass">${state.bassMode ? 'BASS: ON' : 'BASS: OFF'}</button>
+          <button id="pip-autocolor">${state.autoCycle ? 'AUTO: ON' : 'AUTO: OFF'}</button>
           <select id="pip-mode">
             <option value="bars" ${state.mode === 'bars' ? 'selected' : ''}>MODE: BARS</option>
             <option value="circle" ${state.mode === 'circle' ? 'selected' : ''}>MODE: RADIAL</option>
@@ -1784,7 +1901,12 @@ async function requestPip() {
             <option value="chill" ${state.theme === 'chill' ? 'selected' : ''}>THEME: CHILL</option>
             <option value="study" ${state.theme === 'study' ? 'selected' : ''}>THEME: STUDY</option>
             <option value="phonk" ${state.theme === 'phonk' ? 'selected' : ''}>THEME: PHONK</option>
+            <option value="custom" ${state.theme === 'custom' ? 'selected' : ''}>THEME: CUSTOM</option>
           </select>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <label for="pip-sens" style="font-size:10px;">SENS</label>
+            <input type="range" id="pip-sens" min="0.5" max="3" step="0.1" value="${state.sensitivity}" style="width:50px; cursor:pointer;" />
+          </div>
         </div>
       `;
       
@@ -1793,6 +1915,7 @@ async function requestPip() {
       state.pipWindow = pipWindow;
       state.pipCtx = pipCtx;
       state.pipCanvas = pipCanvas;
+      syncPipColors();
       
       const resizePip = () => {
         const container = pipWindow.document.getElementById('canvas-container');
@@ -1818,6 +1941,15 @@ async function requestPip() {
         }
       });
       
+      pipWindow.document.getElementById('pip-autocolor').addEventListener('click', (e) => {
+        const ta = document.getElementById('toggle-autocycle');
+        if (ta) {
+          ta.checked = !ta.checked;
+          ta.dispatchEvent(new Event('change'));
+          e.target.textContent = ta.checked ? 'AUTO: ON' : 'AUTO: OFF';
+        }
+      });
+      
       pipWindow.document.getElementById('pip-mode').addEventListener('change', (e) => {
         const newMode = e.target.value;
         const modeBtn = document.querySelector(`.mode-btn[data-mode="${newMode}"]`);
@@ -1830,45 +1962,40 @@ async function requestPip() {
         if (themeBtn) themeBtn.click();
       });
       
+      pipWindow.document.getElementById('pip-sens').addEventListener('input', (e) => {
+        state.sensitivity = parseFloat(e.target.value);
+        const mainSlider = document.getElementById('sensitivity-slider');
+        const mainVal = document.getElementById('sensitivity-val');
+        if (mainSlider) mainSlider.value = state.sensitivity;
+        if (mainVal) mainVal.textContent = state.sensitivity.toFixed(1);
+      });
+      
       pipWindow.addEventListener('pagehide', () => {
         state.pipWindow = null;
         state.pipCtx = null;
         state.pipCanvas = null;
       });
+      if (!isAuto) showToast('Picture-in-Picture started successfully.');
       return;
     } catch (error) {
-      console.warn('Document PiP failed or denied, falling back to Video PiP.', error);
+      if (!isAuto) console.warn('Document PiP failed or denied, falling back to Video PiP.', error);
     }
   }
 
   // Fallback to Standard Video PiP
   if (!document.pictureInPictureEnabled) {
-    showToast('Picture-in-Picture is not supported here.');
+    if (!isAuto) showToast('Picture-in-Picture is not supported here.');
     return;
   }
+  initAutoPip();
   let video = document.getElementById('pip-video');
-  if (!video) {
-    video = document.createElement('video');
-    video.id = 'pip-video';
-    video.style.position = 'fixed';
-    video.style.bottom = '0';
-    video.style.right = '0';
-    video.style.width = '1px';
-    video.style.height = '1px';
-    video.style.opacity = '0.01';
-    video.style.pointerEvents = 'none';
-    video.style.zIndex = '-9999';
-    video.muted = true;
-    video.playsInline = true;
-    document.body.appendChild(video);
-  }
+
   try {
-    video.srcObject = miniCanvas.captureStream(30);
-    await video.play();
     await video.requestPictureInPicture();
-    showToast('Picture-in-Picture started (Fallback Mode).');
+    if (!isAuto) showToast('Picture-in-Picture started (Fallback Mode).');
   } catch (error) {
-    showToast(`Picture-in-Picture failed: ${error.message}`);
+    if (!isAuto) showToast(`Picture-in-Picture failed: ${error.message}`);
+    if (isAuto) throw error;
   }
 }
 
@@ -1878,6 +2005,18 @@ function applyTheme(themeName, silent = false) {
   const theme = themeConfig();
   state.beatCooldownMax = theme.beatCooldownMax;
   document.body.dataset.theme = nextTheme;
+  
+  if (nextTheme !== 'custom') {
+    document.body.style.removeProperty('--acc1');
+    document.body.style.removeProperty('--glow');
+    document.body.style.removeProperty('--glow-hi');
+    document.body.style.removeProperty('--bg');
+    document.body.style.removeProperty('--bg-soft');
+    document.body.style.removeProperty('--panel');
+  } else if (!silent) {
+    updateCustomThemeColor(THEMES.custom.glowColor);
+  }
+
   themeNameEl.textContent = theme.label;
   themeTaglineEl.textContent = theme.tagline;
 
@@ -1892,17 +2031,27 @@ function applyTheme(themeName, silent = false) {
   if (themeBgUrls[nextTheme]) {
     if (!state.bgImageCache[nextTheme]) {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      if (themeBgUrls[nextTheme].startsWith('http')) {
+        img.crossOrigin = 'anonymous';
+      }
       img.src = themeBgUrls[nextTheme];
       state.bgImageCache[nextTheme] = img;
     }
     state.currentBgImg = state.bgImageCache[nextTheme];
+  } else if (nextTheme === 'custom' && state.customBgMediaType === 'image') {
+      const img = new Image();
+      img.src = state.customBgMediaUrl;
+      state.currentBgImg = img;
   } else {
     state.currentBgImg = null;
   }
   
   if (themeBg) {
-    themeBg.style.backgroundImage = themeBgUrls[nextTheme] ? `url("${themeBgUrls[nextTheme]}")` : '';
+    if (nextTheme === 'custom' && state.customBgMediaUrl && state.customBgMediaType === 'image') {
+       themeBg.style.backgroundImage = `url("${state.customBgMediaUrl}")`;
+    } else {
+       themeBg.style.backgroundImage = themeBgUrls[nextTheme] ? `url("${themeBgUrls[nextTheme]}")` : '';
+    }
   }
 
   if (themeVideo) {
@@ -1928,6 +2077,16 @@ function applyTheme(themeName, silent = false) {
   } else if (nextTheme === 'phonk') {
     themeImage.src = 'phonk_bg.jpg';
     themeImage.classList.remove('hidden');
+  } else if (nextTheme === 'custom') {
+    if (state.customBgMediaUrl) {
+      if (state.customBgMediaType === 'video') {
+        themeVideo.src = state.customBgMediaUrl;
+        themeVideo.classList.remove('hidden');
+        themeVideo.play().catch(()=>{});
+      }
+    } else {
+      themeBg.style.backgroundImage = 'none';
+    }
   }
 
   if (state.analyser) {
@@ -1956,6 +2115,7 @@ function applyTheme(themeName, silent = false) {
   beatFlash.style.background = theme.label === 'BLACK & WHITE'
     ? 'radial-gradient(circle at center, rgba(255,255,255,0.14) 0%, transparent 60%)'
     : `radial-gradient(circle at center, ${paletteColor(0.18, 0.2)} 0%, transparent 60%)`;
+  syncPipColors();
 }
 
 function roundRect(c, x, y, width, height, radius) {
@@ -2070,6 +2230,66 @@ function handleUi() {
       if (state.audioCtx && state.audioCtx.state === 'suspended') {
         state.audioCtx.resume();
       }
+      initAutoPip();
+    });
+  }
+
+  const customColorPicker = document.getElementById('custom-color-picker');
+  if (customColorPicker) {
+    customColorPicker.addEventListener('input', (e) => {
+      updateCustomThemeColor(e.target.value);
+    });
+  }
+
+  const customBgBtn = document.getElementById('custom-bg-btn');
+  const customBgUpload = document.getElementById('custom-bg-upload');
+  if (customBgBtn && customBgUpload) {
+    customBgBtn.addEventListener('click', () => customBgUpload.click());
+    customBgUpload.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      if (state.customBgMediaUrl) {
+        URL.revokeObjectURL(state.customBgMediaUrl);
+      }
+      
+      const url = URL.createObjectURL(file);
+      state.customBgMediaUrl = url;
+      state.customBgMediaType = file.type.startsWith('video') ? 'video' : 'image';
+      
+      if (state.customBgMediaType === 'video') {
+        const tempVid = document.createElement('video');
+        tempVid.src = url;
+        tempVid.onloadeddata = () => {
+          if (state.autoCycle) {
+            updateCustomThemeColor(extractColorFromMedia(tempVid));
+          }
+          if (state.theme === 'custom') applyTheme('custom');
+        };
+      } else {
+        const tempImg = new Image();
+        tempImg.src = url;
+        tempImg.onload = () => {
+          if (state.autoCycle) {
+            updateCustomThemeColor(extractColorFromMedia(tempImg));
+          }
+          if (state.theme === 'custom') applyTheme('custom');
+        };
+      }
+    });
+  }
+
+  const customAutoBtn = document.getElementById('custom-auto-btn');
+  if (customAutoBtn) {
+    customAutoBtn.addEventListener('click', () => {
+      if (state.customBgMediaUrl) {
+        if (state.customBgMediaType === 'video') {
+          const v = document.getElementById('theme-video');
+          if (v) updateCustomThemeColor(extractColorFromMedia(v));
+        } else if (state.currentBgImg) {
+          updateCustomThemeColor(extractColorFromMedia(state.currentBgImg));
+        }
+      }
     });
   }
 
@@ -2083,6 +2303,7 @@ function handleUi() {
   });
 
   btnStart.addEventListener('click', async () => {
+    initAutoPip();
     if (!state.running) {
       btnStart.textContent = 'Connecting';
       btnStart.disabled = true;
@@ -2250,6 +2471,10 @@ function handleUi() {
 
   toggleAutocycle.addEventListener('change', () => {
     state.autoCycle = toggleAutocycle.checked;
+    if (state.pipWindow) {
+      const pipAuto = state.pipWindow.document.getElementById('pip-autocolor');
+      if (pipAuto) pipAuto.textContent = state.autoCycle ? 'AUTO: ON' : 'AUTO: OFF';
+    }
   });
 
   toggleBass.addEventListener('change', () => {
@@ -2304,8 +2529,57 @@ window.state = state;
     }
   };
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && state.running && !state.paused) {
-      bgWorker.postMessage('ping');
+    if (document.hidden) {
+      if (state.running && !state.paused) {
+        bgWorker.postMessage('ping');
+        if (!state.pipWindow && !document.pictureInPictureElement) {
+          requestPip(true).catch(() => {});
+        }
+      }
+    } else {
+      if (state.pipWindow) {
+        state.pipWindow.close();
+      }
+      const v = document.getElementById('pip-video');
+      if (v && state.running && !state.paused) {
+        v.play().catch(() => {});
+      }
     }
   });
 })();
+
+function initAutoPip() {
+  if (!document.pictureInPictureEnabled) return;
+  
+  let video = document.getElementById('pip-video');
+  if (!video) {
+    video = document.createElement('video');
+    video.id = 'pip-video';
+    video.style.position = 'fixed';
+    video.style.bottom = '0';
+    video.style.right = '0';
+    video.style.width = '100px';
+    video.style.height = '100px';
+    video.style.opacity = '0.01';
+    video.style.pointerEvents = 'none';
+    video.style.zIndex = '-9999';
+    video.muted = true;
+    video.playsInline = true;
+    document.body.appendChild(video);
+  }
+  
+  if (!video.srcObject) {
+    try {
+      video.srcObject = miniCanvas.captureStream(30);
+      video.autoPictureInPicture = true;
+      video.addEventListener('leavepictureinpicture', () => {
+        if (state.running && !state.paused) {
+          video.play().catch(() => {});
+        }
+      });
+      video.play().catch(e => console.warn('Auto PiP video play blocked:', e));
+    } catch (error) {
+      console.warn('Could not initialize auto-PiP stream:', error);
+    }
+  }
+}
