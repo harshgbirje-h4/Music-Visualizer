@@ -1891,6 +1891,7 @@ function drawCar(c, x, y, scale) {
 function renderPip(ctxToRender, width, height) {
   ctxToRender.clearRect(0, 0, width, height);
 
+  // 1. Draw Background (Media or Color)
   if (state.theme === 'chill' || state.theme === 'study' || (state.theme === 'custom' && state.customBgMediaType === 'video')) {
     if (themeVideo && themeVideo.readyState >= 2 && !themeVideo.paused) {
       drawImageCover(ctxToRender, themeVideo, width, height);
@@ -1905,6 +1906,21 @@ function renderPip(ctxToRender, width, height) {
     ctxToRender.fillRect(0, 0, width, height);
   }
 
+  // 2. Draw MilkDrop (if active)
+  if (state.mode === 'milkdrop') {
+    const bcCanvas = document.getElementById('butterchurn-canvas');
+    if (bcCanvas) {
+      ctxToRender.save();
+      // Apply the same filters (hue-rotate, saturate) to the PiP/Mini view
+      if (bcCanvas.style.filter && bcCanvas.style.filter !== 'none') {
+        ctxToRender.filter = bcCanvas.style.filter;
+      }
+      drawImageCover(ctxToRender, bcCanvas, width, height);
+      ctxToRender.restore();
+    }
+  }
+
+  // 3. Draw standard layers (empty in milkdrop mode due to optimization)
   drawImageCover(ctxToRender, bgCanvas, width, height);
   drawImageCover(ctxToRender, canvas, width, height);
 }
