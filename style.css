@@ -104,18 +104,18 @@ body[data-theme="memory"] {
 }
 
 body[data-theme="chill"] {
-  --bg: #0a0b12;
-  --bg-soft: #141624;
-  --panel: rgba(10, 11, 18, 0.7);
-  --panel-strong: rgba(14, 16, 26, 0.85);
-  --border: rgba(100, 150, 255, 0.3);
-  --text: #e0eaff;
-  --dim: #7a8cb4;
-  --acc1: #4dabf7;
-  --acc2: #9775fa;
-  --acc3: #3b5bdb;
-  --glow: rgba(77, 171, 247, 0.3);
-  --glow-hi: rgba(151, 117, 250, 0.5);
+  --bg: #0a0514;
+  --bg-soft: #170b29;
+  --panel: rgba(18, 10, 32, 0.7);
+  --panel-strong: rgba(28, 16, 46, 0.85);
+  --border: rgba(160, 100, 255, 0.3);
+  --text: #eadeff;
+  --dim: #a88cb4;
+  --acc1: #a975fa;
+  --acc2: #6b5bdb;
+  --acc3: #4b2b8b;
+  --glow: rgba(169, 117, 250, 0.3);
+  --glow-hi: rgba(169, 117, 250, 0.5);
   --flash: rgba(77, 171, 247, 0.15);
   --grain: 0.1;
 }
@@ -1110,4 +1110,23 @@ body[data-theme="custom"] #custom-settings {
 #custom-auto-btn:hover {
   background: #2a2a2a;
   border-color: #555;
+}
+
+body.milkdrop-mode { --bg: #000 !important; --bg-soft: #000 !important; }
+body.milkdrop-mode #theme-bg, body.milkdrop-mode #theme-video, body.milkdrop-mode #theme-image { opacity: 0 !important; transition: opacity 0.4s ease; }
+
+/* === MilkDrop quality & fit fixes === */
+/* Hide grain overlay so it doesn't degrade butterchurn quality */
+body.milkdrop-mode::after { opacity: 0 !important; }
+/* Hide the 2D canvas layers so they don't paint over butterchurn */
+body.milkdrop-mode #viz-canvas { opacity: 0 !important; pointer-events: none; }
+body.milkdrop-mode #bg-canvas { opacity: 0 !important; pointer-events: none; }
+/* Ensure butterchurn canvas renders sharp and fills viewport correctly */
+#butterchurn-canvas {
+  image-rendering: auto;
+  transition: opacity 0.4s ease, filter 0.5s ease;
+  /* Ensure canvas CSS size stays at exact viewport with no rounding */
+  width: 100vw !important;
+  height: 100vh !important;
+  object-fit: fill;
 }

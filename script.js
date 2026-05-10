@@ -160,9 +160,9 @@ const THEMES = {
   chill: {
     label: 'CHILL MODE',
     tagline: 'Relaxing night drives',
-    palette: ['#4dabf7', '#9775fa', '#3b5bdb', '#845ef7'],
-    glowColor: '#4dabf7',
-    background: ['#0a0b12', '#141624', '#1d2136'],
+    palette: ['#a975fa', '#6b5bdb', '#845ef7', '#b197fa'],
+    glowColor: '#a975fa',
+    background: ['#0a0514', '#170b29', '#2d1445'],
     analyserSmoothing: 0.68,
     beatScaleBoost: 0.015,
     beatFlashDuration: 200,
@@ -284,7 +284,11 @@ const state = {
   pipCtx: null,
   pipCanvas: null,
   customBgMediaUrl: null,
-  customBgMediaType: null
+  customBgMediaType: null,
+  visualizer: null,
+  presets: null,
+  presetKeys: [],
+  bcLastCycle: 0
 };
 
 const canvas = document.getElementById('viz-canvas');
@@ -334,8 +338,23 @@ function themeConfig() {
 }
 
 function resizeCanvas() {
-  canvas.width = bgCanvas.width = window.innerWidth;
-  canvas.height = bgCanvas.height = window.innerHeight;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  canvas.width = bgCanvas.width = w;
+  canvas.height = bgCanvas.height = h;
+
+  // Set the butterchurn canvas pixel dimensions to match the actual pixels for high quality
+  const bcCanvas = document.getElementById('butterchurn-canvas');
+  if (bcCanvas) {
+    bcCanvas.width = w * dpr;
+    bcCanvas.height = h * dpr;
+  }
+
+  if (state.visualizer) {
+    // Tell butterchurn the actual pixel dimensions for rendering
+    state.visualizer.setRendererSize(w * dpr, h * dpr);
+  }
 }
 
 window.addEventListener('resize', resizeCanvas);
@@ -431,6 +450,89 @@ function updateCustomThemeColor(hex) {
   if (cp) cp.value = hex;
 }
 
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h *= 60;
+  }
+  return { h, s: s * 100, l: l * 100 };
+}
+
+function updateMilkdropFilter(bcCanvas) {
+  // Remove any old overlay
+  const oldOverlay = document.getElementById('milkdrop-tint');
+  if (oldOverlay) oldOverlay.remove();
+
+  // KEY QUALITY FIX: Use ONLY hue-rotate for color identity.
+  // Multi-step filter chains (saturate + contrast + brightness + sepia) cause
+  // GPU quantization and anti-aliasing artifacts, making the output look noisy and low-quality.
+  // Hue-rotate is a pure matrix operation with zero quality loss.
+  if (state.autoCycle) {
+    bcCanvas.style.filter = `hue-rotate(${state.colorHue}deg) saturate(1.5)`;
+    return;
+  }
+
+  switch (state.theme) {
+    case 'bw':
+      bcCanvas.style.filter = 'grayscale(100%) brightness(1.1)';
+      break;
+    case 'classic':
+      // Warm amber — slight hue shift only
+      bcCanvas.style.filter = 'hue-rotate(20deg) saturate(1.4)';
+      break;
+    case 'chill':
+      // Cool violet-purple
+      bcCanvas.style.filter = 'hue-rotate(200deg) saturate(1.6)';
+      break;
+    case 'memory':
+      // Electric cyan-blue
+      bcCanvas.style.filter = 'hue-rotate(160deg) saturate(1.5)';
+      break;
+    case 'rock':
+      // Hot pink/magenta
+      bcCanvas.style.filter = 'hue-rotate(295deg) saturate(1.6)';
+      break;
+    case 'study':
+      // Desaturated minimal
+      bcCanvas.style.filter = 'saturate(0.4) brightness(1.05)';
+      break;
+    case 'phonk':
+      // Blood red — shift only
+      bcCanvas.style.filter = 'hue-rotate(340deg) saturate(1.8)';
+      break;
+    case 'custom': {
+      const customHex = themeConfig().glowColor || '#00ffcc';
+      const rgb = hexToRgb(customHex);
+      const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+      const hueShift = Math.round(hsl.h - 60 + 360) % 360;
+      bcCanvas.style.filter = `hue-rotate(${hueShift}deg) saturate(1.5)`;
+      break;
+    }
+    default:
+      bcCanvas.style.filter = 'none';
+      break;
+  }
+}
+
+function updateModeVisibility() {
+  const isMilkdrop = state.mode === 'milkdrop';
+  document.body.classList.toggle('milkdrop-mode', isMilkdrop);
+  const bcCanvas = document.getElementById('butterchurn-canvas');
+  if (bcCanvas) {
+    bcCanvas.style.opacity = isMilkdrop ? '1' : '0';
+  }
+}
+
 function mix(a, b, t) {
   return a + (b - a) * t;
 }
@@ -476,14 +578,58 @@ function ensureCtx() {
     state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     state.analyser = state.audioCtx.createAnalyser();
     state.analyser.fftSize = state.fftSize;
+    state.analyser.smoothingTimeConstant = 0.85;
     state.bufferLength = state.analyser.frequencyBinCount;
     state.freqData = new Uint8Array(state.bufferLength);
     state.timeData = new Uint8Array(state.analyser.fftSize);
+    
+    if (window.butterchurn && window.butterchurnPresets) {
+      const bcCanvas = document.getElementById('butterchurn-canvas');
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      
+      // Scale canvas for high-DPI sharpness
+      bcCanvas.width = w * dpr;
+      bcCanvas.height = h * dpr;
+      
+      // Use pixelRatio:1 since we are manually scaling the canvas dimensions above
+      state.visualizer = butterchurn.default.createVisualizer(state.audioCtx, bcCanvas, {
+        width: w * dpr,
+        height: h * dpr,
+        pixelRatio: 1,
+        textureRatio: 1
+      });
+      state.visualizer.connectAudio(state.analyser);
+      state.presets = butterchurnPresets.getPresets();
+      state.presetKeys = Object.keys(state.presets);
+      loadThemePreset(state.theme);
+    }
   }
   if (state.audioCtx.state === 'suspended') {
     state.audioCtx.resume();
   }
   applyTheme(state.theme, true);
+}
+
+function loadThemePreset(themeName) {
+  if (!state.visualizer || !state.presets) return;
+
+  // Use the FULL preset pool - no keyword restrictions that cause white screens / repeated patterns.
+  // All themes get the same gorgeous random patterns; color identity comes from CSS filters above.
+  const blacklistRegex = /unknown|blank|test\b|untitled|empty/i;
+  let pool = state.presetKeys.filter(k => !blacklistRegex.test(k));
+  if (pool.length === 0) pool = state.presetKeys;
+
+  // Avoid picking the same preset twice in a row
+  let attempts = 0, randomKey;
+  do {
+    randomKey = pool[Math.floor(Math.random() * pool.length)];
+    attempts++;
+  } while (randomKey === state.lastPresetKey && attempts < 10);
+  state.lastPresetKey = randomKey;
+
+  state.visualizer.loadPreset(state.presets[randomKey], 2.5);
 }
 
 function disconnectSource() {
@@ -804,19 +950,35 @@ function renderLoop(fromWorker = false) {
     state.colorHue = (state.colorHue + theme.animationSpeed * 1.4) % 360;
   }
 
-  const width = canvas.width;
-  const height = canvas.height;
-  ctx.save();
-  ctx.translate(width / 2, height / 2);
-  ctx.scale(state.beatScale * pumpScale, state.beatScale * pumpScale);
-  ctx.translate(-width / 2, -height / 2);
-  drawBackground(ctx, width, height);
-  if (state.showBgFx) {
-    drawAmbientOverlay(ctx, width, height);
+  if (state.mode === 'milkdrop' && state.visualizer) {
+    if (!state.bcLastCycle || performance.now() - state.bcLastCycle > 9000) {
+      loadThemePreset(state.theme);
+      state.bcLastCycle = performance.now();
+    }
+    state.visualizer.render();
+    
+    // SKIP 2D DRAWING in milkdrop mode to maximize performance and sharpness
+    // We only need to clear the main canvas if it was previously drawing something
+    if (state._wasNotMilkdrop) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      state._wasNotMilkdrop = false;
+    }
+  } else {
+    state._wasNotMilkdrop = true;
+    const width = canvas.width;
+    const height = canvas.height;
+    ctx.save();
+    ctx.translate(width / 2, height / 2);
+    ctx.scale(state.beatScale * pumpScale, state.beatScale * pumpScale);
+    ctx.translate(-width / 2, -height / 2);
+    drawBackground(ctx, width, height);
+    if (state.showBgFx) {
+      drawAmbientOverlay(ctx, width, height);
+    }
+    drawMode(ctx, width, height);
+    drawThemeForeground(ctx, width, height);
+    ctx.restore();
   }
-  drawMode(ctx, width, height);
-  drawThemeForeground(ctx, width, height);
-  ctx.restore();
 
   if (state.showBgFx) {
     drawBgCanvas();
@@ -1156,6 +1318,24 @@ function drawBursts(c) {
 }
 
 function drawMode(c, width, height) {
+  const bcCanvas = document.getElementById('butterchurn-canvas');
+  if (state.mode === 'milkdrop') {
+    if (bcCanvas.style.opacity !== '1') {
+      bcCanvas.style.opacity = '1';
+      bcCanvas.style.mixBlendMode = 'normal';
+    }
+    updateMilkdropFilter(bcCanvas);
+    return;
+  } else {
+    if (bcCanvas.style.opacity !== '0') {
+      bcCanvas.style.opacity = '0';
+      bcCanvas.style.mixBlendMode = 'screen';
+      bcCanvas.style.filter = '';
+      const overlay = document.getElementById('milkdrop-tint');
+      if (overlay) overlay.style.backgroundColor = 'transparent';
+    }
+  }
+
   switch (state.mode) {
     case 'bars':
       drawBars(c, width, height);
@@ -1892,6 +2072,7 @@ async function requestPip(isAuto = false) {
             <option value="bars" ${state.mode === 'bars' ? 'selected' : ''}>MODE: BARS</option>
             <option value="circle" ${state.mode === 'circle' ? 'selected' : ''}>MODE: RADIAL</option>
             <option value="wave" ${state.mode === 'wave' ? 'selected' : ''}>MODE: WAVE</option>
+            <option value="milkdrop" ${state.mode === 'milkdrop' ? 'selected' : ''}>MODE: MILKDROP</option>
           </select>
           <select id="pip-theme">
             <option value="classic" ${state.theme === 'classic' ? 'selected' : ''}>THEME: CLASSIC</option>
@@ -2019,6 +2200,13 @@ function applyTheme(themeName, silent = false) {
 
   themeNameEl.textContent = theme.label;
   themeTaglineEl.textContent = theme.tagline;
+
+  if (state.mode === 'milkdrop') {
+    loadThemePreset(nextTheme);
+    state.bcLastCycle = performance.now();
+    const bcCanvas = document.getElementById('butterchurn-canvas');
+    if (bcCanvas) updateMilkdropFilter(bcCanvas);
+  }
 
   const themeBgUrls = {
     default: 'main-bg.jpg',
@@ -2447,6 +2635,12 @@ function handleUi() {
       modeButtons.forEach((item) => item.classList.remove('active'));
       button.classList.add('active');
       
+      if (state.mode === 'milkdrop') {
+        loadThemePreset(state.theme);
+        state.bcLastCycle = performance.now();
+      }
+      updateModeVisibility();
+
       if (state.pipWindow) {
         const pipModeSel = state.pipWindow.document.getElementById('pip-mode');
         if (pipModeSel) pipModeSel.value = state.mode;
