@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SPECTR - Audio Visualizer</title>
-  <link rel="stylesheet" href="style.css?v=1.2" />
+  <link rel="stylesheet" href="style.css?v=2.0" />
+  
 </head>
 <body data-theme="classic">
   <div id="intro-screen">
@@ -150,5 +151,27 @@
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
   <script src="script.js?v=1.1"></script>
+
+  <script>
+    function forceMobileFix() {
+      const title = document.getElementById('intro-title');
+      if (!title) return;
+      if (window.innerWidth <= 600) {
+        title.style.fontSize = Math.min(window.innerWidth * 0.11, 42) + 'px';
+        title.style.letterSpacing = '0.3rem';
+        title.style.paddingLeft = '0.3rem';
+        title.style.marginLeft = '0';
+        title.style.background = 'transparent'; // Remove any debug red
+      }
+      if (window.innerWidth <= 480) {
+        title.style.fontSize = Math.min(window.innerWidth * 0.09, 32) + 'px';
+        title.style.letterSpacing = '0.2rem';
+      }
+    }
+    window.addEventListener('load', forceMobileFix);
+    window.addEventListener('resize', forceMobileFix);
+    forceMobileFix();
+  </script>
+
 </body>
 </html>

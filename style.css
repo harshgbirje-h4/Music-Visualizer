@@ -802,6 +802,74 @@ body.theme-transitioning #bg-canvas {
   display: none;
 }
 
+
+/* =========================================
+   INTRO SCREEN (BASE STYLES)
+   ========================================= */
+#intro-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #050505;
+  transition: opacity 1.2s ease, visibility 1.2s ease;
+}
+
+#intro-screen.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.intro-bg-image {
+  position: absolute;
+  inset: 0;
+  background-image: url('intro-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.8;
+  z-index: -1;
+  animation: introZoom 25s infinite alternate;
+}
+
+.intro-content {
+  text-align: center;
+  z-index: 1;
+  width: 100%;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+#intro-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(2.5rem, 8vw, 8rem);
+  font-weight: 900;
+  letter-spacing: clamp(0.5rem, 2vw, 1.5rem);
+  color: #fff;
+  text-shadow: 0 0 40px rgba(255, 255, 255, 0.4);
+  margin-bottom: 3rem;
+  padding-left: clamp(0.5rem, 2vw, 1.5rem);
+  animation: pulseTitle 4s infinite;
+  display: block;
+}
+
+#btn-enter {
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  color: #fff;
+  padding: 1.2rem 3rem;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.3rem;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+}
 @media (max-width: 900px) {
   #app-header {
     flex-wrap: wrap;
@@ -840,6 +908,17 @@ body.theme-transitioning #bg-canvas {
 }
 
 @media (max-width: 600px) {
+  #intro-title {
+    font-size: clamp(2rem, 12vw, 4rem) !important;
+    letter-spacing: 0.3rem !important;
+    padding-left: 0.3rem !important;
+    margin-left: 0 !important;
+  }
+  #btn-enter {
+    padding: 1rem 2rem;
+    font-size: 1rem;
+    letter-spacing: 0.2rem;
+  }
   #energy-meter {
     right: 8px;
   }
@@ -870,30 +949,34 @@ body.theme-transitioning #bg-canvas {
     height: 140px !important;
   }
 
-  #intro-title {
-    font-size: clamp(3rem, 15vw, 6rem);
-    letter-spacing: 0.5rem;
-    margin-left: 0.5rem;
-  }
+  
 
-  #btn-enter {
-    padding: 1rem 2rem;
-    font-size: 1rem;
-  }
+  
 }
 
 @media (max-width: 480px) {
+  #intro-title {
+    font-size: clamp(1.8rem, 10vw, 2.5rem) !important;
+    letter-spacing: 0.2rem !important;
+    padding-left: 0.2rem !important;
+    margin-bottom: 2rem !important;
+    margin-left: 0 !important;
+  }
+  #btn-enter {
+    padding: 0.8rem 1.8rem;
+    font-size: 0.9rem;
+  }
   #app-header {
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
-    padding: 16px 12px;
-    gap: 12px;
+    padding: 20px 16px; gap: 16px;
   }
   
   #logo {
     text-align: center;
     order: 1;
+    font-size: 24px;
   }
 
   #header-controls {
@@ -913,7 +996,7 @@ body.theme-transitioning #bg-canvas {
 
   #control-panel {
     width: 100%;
-    padding: 12px 10px 16px;
+    padding: 20px 14px 24px;
     gap: 12px;
     border-radius: 12px 12px 0 0;
     justify-content: center;
@@ -944,7 +1027,7 @@ body.theme-transitioning #bg-canvas {
   }
   
   #energy-meter {
-    display: none;
+    display: none !important;
   }
 }
 
@@ -1012,43 +1095,16 @@ body.theme-transitioning #bg-canvas {
   100% { transform: scale(1.15); }
 }
 
-.intro-content {
-  text-align: center;
-  z-index: 1;
-}
 
-#intro-title {
-  font-family: 'Orbitron', sans-serif;
-  font-size: 8rem;
-  font-weight: 900;
-  letter-spacing: 1.5rem;
-  color: #fff;
-  text-shadow: 0 0 40px rgba(255, 255, 255, 0.4);
-  margin-bottom: 3rem;
-  margin-left: 1.5rem; /* Offset for letter-spacing */
-  animation: pulseTitle 4s infinite;
-}
+
+
 
 @keyframes pulseTitle {
   0%, 100% { text-shadow: 0 0 30px rgba(255,255,255,0.3); }
   50% { text-shadow: 0 0 60px rgba(100,200,255,0.7), 0 0 20px rgba(100,200,255,0.4); }
 }
 
-#btn-enter {
-  background: rgba(0, 0, 0, 0.3);
-  border: 2px solid rgba(255, 255, 255, 0.5);
-  color: #fff;
-  padding: 1.2rem 3rem;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 1.2rem;
-  font-weight: 700;
-  letter-spacing: 0.3rem;
-  border-radius: 50px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-transform: uppercase;
-  backdrop-filter: blur(8px);
-}
+
 
 #btn-enter:hover {
   background: rgba(255, 255, 255, 0.15);
