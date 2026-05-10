@@ -186,9 +186,9 @@ const THEMES = {
   study: {
     label: 'STUDY MODE',
     tagline: 'Deep focus',
-    palette: ['#ffffff', '#cccccc', '#999999', '#666666'],
-    glowColor: '#ffffff',
-    background: ['#000000', '#111111', '#222222'],
+    palette: ['#ffeb3b', '#fbc02d', '#f9a825', '#f57f17'],
+    glowColor: '#ffeb3b',
+    background: ['#1a1a00', '#2a2a00', '#3a2a00'],
     analyserSmoothing: 0.7,
     beatScaleBoost: 0.005,
     beatFlashDuration: 300,
@@ -469,53 +469,54 @@ function rgbToHsl(r, g, b) {
 }
 
 function updateMilkdropFilter(bcCanvas) {
-  // Remove any old overlay
   const oldOverlay = document.getElementById('milkdrop-tint');
   if (oldOverlay) oldOverlay.remove();
 
-  // KEY QUALITY FIX: Use ONLY hue-rotate for color identity.
-  // Multi-step filter chains (saturate + contrast + brightness + sepia) cause
-  // GPU quantization and anti-aliasing artifacts, making the output look noisy and low-quality.
-  // Hue-rotate is a pure matrix operation with zero quality loss.
+  // If Auto Color is enabled, show all color combinations by cycling hues
   if (state.autoCycle) {
-    bcCanvas.style.filter = `hue-rotate(${state.colorHue}deg) saturate(1.5)`;
+    bcCanvas.style.filter = `hue-rotate(${state.colorHue}deg) saturate(1.5) contrast(1.1) brightness(1.1)`;
     return;
   }
 
+  // Exact color combinations as per theme identities
   switch (state.theme) {
     case 'bw':
-      bcCanvas.style.filter = 'grayscale(100%) brightness(1.1)';
+      // Black & White combinations
+      bcCanvas.style.filter = 'grayscale(100%) contrast(1.4) brightness(1.1)';
       break;
     case 'classic':
-      // Warm amber — slight hue shift only
-      bcCanvas.style.filter = 'hue-rotate(20deg) saturate(1.4)';
+      // Golden color combinations (Warm amber)
+      bcCanvas.style.filter = 'sepia(1) saturate(1.8) hue-rotate(-10deg) contrast(1.1) brightness(1.05)';
       break;
     case 'chill':
-      // Cool violet-purple
-      bcCanvas.style.filter = 'hue-rotate(200deg) saturate(1.6)';
+      // Purple color combinations
+      bcCanvas.style.filter = 'sepia(1) saturate(3) hue-rotate(240deg) contrast(1.05) brightness(1.1)';
       break;
     case 'memory':
-      // Electric cyan-blue
-      bcCanvas.style.filter = 'hue-rotate(160deg) saturate(1.5)';
+      // Blue color combinations
+      bcCanvas.style.filter = 'sepia(1) saturate(3) hue-rotate(185deg) contrast(1.05) brightness(1.1)';
       break;
     case 'rock':
-      // Hot pink/magenta
-      bcCanvas.style.filter = 'hue-rotate(295deg) saturate(1.6)';
+      // Pink color combinations
+      bcCanvas.style.filter = 'sepia(1) saturate(3) hue-rotate(290deg) contrast(1.1) brightness(1.1)';
       break;
     case 'study':
-      // Desaturated minimal
-      bcCanvas.style.filter = 'saturate(0.4) brightness(1.05)';
+      // Yellow color combinations
+      bcCanvas.style.filter = 'sepia(1) saturate(2) hue-rotate(15deg) contrast(1.1) brightness(1.1)';
       break;
     case 'phonk':
-      // Blood red — shift only
-      bcCanvas.style.filter = 'hue-rotate(340deg) saturate(1.8)';
+      // Red color combinations
+      bcCanvas.style.filter = 'sepia(1) saturate(5) hue-rotate(330deg) contrast(1.2) brightness(1.0)';
       break;
     case 'custom': {
+      // Color changes as per user chosen color
       const customHex = themeConfig().glowColor || '#00ffcc';
       const rgb = hexToRgb(customHex);
       const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
-      const hueShift = Math.round(hsl.h - 60 + 360) % 360;
-      bcCanvas.style.filter = `hue-rotate(${hueShift}deg) saturate(1.5)`;
+      // Map HSL to CSS filter shifts
+      const hueShift = Math.round(hsl.h - 40 + 360) % 360; 
+      const satVal = Math.max(1.5, hsl.s / 30);
+      bcCanvas.style.filter = `sepia(1) saturate(${satVal}) hue-rotate(${hueShift}deg) contrast(1.05) brightness(1.1)`;
       break;
     }
     default:
@@ -530,6 +531,9 @@ function updateModeVisibility() {
   const bcCanvas = document.getElementById('butterchurn-canvas');
   if (bcCanvas) {
     bcCanvas.style.opacity = isMilkdrop ? '1' : '0';
+    if (isMilkdrop) {
+      updateMilkdropFilter(bcCanvas);
+    }
   }
 }
 
@@ -2681,6 +2685,9 @@ function handleUi() {
 
   toggleAutocycle.addEventListener('change', () => {
     state.autoCycle = toggleAutocycle.checked;
+    const bcCanvas = document.getElementById('butterchurn-canvas');
+    if (bcCanvas) updateMilkdropFilter(bcCanvas);
+    
     if (state.pipWindow) {
       const pipAuto = state.pipWindow.document.getElementById('pip-autocolor');
       if (pipAuto) pipAuto.textContent = state.autoCycle ? 'AUTO: ON' : 'AUTO: OFF';
