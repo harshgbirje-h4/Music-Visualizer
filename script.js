@@ -2072,14 +2072,15 @@ async function requestPip(isAuto = false) {
       pipWindow.document.body.innerHTML = `
         <style>
           :root { --bg: #000; --panel: #111; --text: #fff; --acc1: #5f9cff; --border: #444; }
-          body { margin: 0; background: var(--bg); display: flex; flex-direction: column; height: 100vh; font-family: monospace; color: var(--text); overflow: hidden; }
-          #canvas-container { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); overflow: hidden; }
+          body { margin: 0; background: var(--bg); height: 100vh; font-family: monospace; color: var(--text); overflow: hidden; position: relative; }
+          #canvas-container { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; background: var(--bg); overflow: hidden; }
           canvas { width: 100%; height: 100%; display: block; object-fit: cover; transform-origin: center center; }
-          #pip-controls { padding: 8px; background: var(--panel); display: flex; gap: 8px; align-items: center; justify-content: center; border-top: 1px solid var(--border); flex-wrap: wrap; }
-          select, button { background: transparent; color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; cursor: pointer; outline: none; transition: all 0.2s; }
-          select:hover, button:hover { border-color: var(--acc1); color: var(--acc1); }
+          #pip-controls { position: absolute; bottom: 0; left: 0; right: 0; z-index: 10; padding: 12px; background: rgba(15, 15, 15, 0.85); backdrop-filter: blur(12px); display: flex; gap: 8px; align-items: center; justify-content: center; border-top: 1px solid var(--border); flex-wrap: wrap; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease; }
+          select, button { background: rgba(30, 30, 30, 0.6); color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; cursor: pointer; outline: none; transition: all 0.2s; }
+          select:hover, button:hover { border-color: var(--acc1); background: rgba(40, 40, 40, 0.8); }
           button { font-weight: bold; color: var(--acc1); border-color: var(--acc1); }
           option { background: var(--bg); color: var(--text); font-family: monospace; }
+          body.controls-hidden #pip-controls { transform: translateY(100%); opacity: 0; pointer-events: none; }
         </style>
         <div id="canvas-container">
           <canvas id="pip-canvas" width="600" height="320"></canvas>
@@ -2150,6 +2151,24 @@ async function requestPip(isAuto = false) {
           e.target.textContent = ta.checked ? 'AUTO: ON' : 'AUTO: OFF';
         }
       });
+
+      // PiP Auto-hide logic
+      let pipControlsTimer = null;
+      const resetPipControls = () => {
+        if (!pipWindow || !pipWindow.document) return;
+        pipWindow.document.body.classList.remove('controls-hidden');
+        if (pipControlsTimer) clearTimeout(pipControlsTimer);
+        pipControlsTimer = setTimeout(() => {
+          if (pipWindow && pipWindow.document) {
+            pipWindow.document.body.classList.add('controls-hidden');
+          }
+        }, 3000);
+      };
+      pipWindow.addEventListener('mousemove', resetPipControls);
+      pipWindow.addEventListener('mousedown', resetPipControls);
+      pipWindow.document.getElementById('pip-controls').addEventListener('change', resetPipControls);
+      resetPipControls();
+
       
       pipWindow.document.getElementById('pip-mode').addEventListener('change', (e) => {
         const newMode = e.target.value;
@@ -2272,10 +2291,9 @@ function applyTheme(themeName, silent = false) {
   
   if (nextTheme === 'chill') {
     const chillVideos = [
-      'vecteezy_a-sports-car-driving-on-a-road-at-night_70199228.mp4',
       'vecteezy_cars-parked-on-a-hillside-with-a-90-s-inspired-night-sky-a_49887896.mp4'
     ];
-    themeVideo.src = chillVideos[state.currentChillVideo];
+    themeVideo.src = chillVideos[0];
     themeVideo.classList.remove('hidden');
     themeVideo.play();
   } else if (nextTheme === 'study') {
@@ -2707,6 +2725,22 @@ function handleUi() {
       state.audioCtx.resume();
     }
   });
+
+  // Global Auto-hide HUD logic
+  let controlsTimer = null;
+  function resetControlsTimeout() {
+    document.body.classList.remove('controls-hidden');
+    if (controlsTimer) clearTimeout(controlsTimer);
+    if (!state.running) return;
+    controlsTimer = setTimeout(() => {
+      document.body.classList.add('controls-hidden');
+    }, 3000);
+  }
+  window.addEventListener('mousemove', resetControlsTimeout);
+  window.addEventListener('mousedown', resetControlsTimeout);
+  window.addEventListener('keydown', resetControlsTimeout);
+  document.getElementById('control-panel').addEventListener('change', resetControlsTimeout);
+  resetControlsTimeout();
 }
 
 window.state = state;

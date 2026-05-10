@@ -121,19 +121,19 @@ body[data-theme="chill"] {
 }
 
 body[data-theme="study"] {
-  --bg: #000;
-  --bg-soft: #111;
-  --panel: rgba(15, 15, 15, 0.6);
-  --panel-strong: rgba(20, 20, 20, 0.8);
-  --border: rgba(200, 200, 200, 0.2);
-  --text: #fff;
-  --dim: #888;
-  --acc1: #ddd;
-  --acc2: #999;
-  --acc3: #555;
-  --glow: rgba(255, 255, 255, 0.15);
-  --glow-hi: rgba(255, 255, 255, 0.3);
-  --flash: rgba(255, 255, 255, 0.1);
+  --bg: #1a1a00;
+  --bg-soft: #2a2a00;
+  --panel: rgba(55, 55, 0, 0.75);
+  --panel-strong: rgba(75, 75, 0, 0.9);
+  --border: rgba(255, 235, 59, 0.35);
+  --text: #fffbe6;
+  --dim: #d4c88e;
+  --acc1: #ffeb3b;
+  --acc2: #fff176;
+  --acc3: #827717;
+  --glow: rgba(255, 235, 59, 0.25);
+  --glow-hi: rgba(255, 235, 59, 0.5);
+  --flash: rgba(255, 235, 59, 0.15);
   --grain: 0.1;
 }
 
@@ -1129,4 +1129,33 @@ body.milkdrop-mode #bg-canvas { opacity: 0 !important; pointer-events: none; }
   width: 100vw !important;
   height: 100vh !important;
   object-fit: fill;
+}
+
+/* Auto-hide HUD logic */
+#app-header, #control-panel, #energy-meter, #source-badge, #file-player {
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease;
+}
+
+body.controls-hidden #app-header {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.controls-hidden #control-panel {
+  transform: translateX(-50%) translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.controls-hidden #energy-meter {
+  transform: translateY(-50%) translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.controls-hidden #source-badge,
+body.controls-hidden #file-player {
+  opacity: 0;
+  pointer-events: none;
 }
