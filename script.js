@@ -581,7 +581,7 @@ function paletteColor(t, alpha = 1) {
 
   let palette = theme.palette;
   if (state.theme === 'chill' && state.mode === 'bars') {
-    palette = ['#00f0ff', '#9d00ff', '#ff0055', '#9d00ff'];
+    palette = ['#e066ff', '#bc20ff', '#8b00ff', '#c738ff'];
   }
   
   const scaled = clamp(t, 0, 0.9999) * (palette.length - 1);
