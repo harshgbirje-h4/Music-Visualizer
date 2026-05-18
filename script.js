@@ -252,7 +252,7 @@ const state = {
   animFrameId: null,
   mode: 'bars',
   theme: 'classic',
-  sensitivity: 1.0,
+  sensitivity: 0.7,
   showBgFx: true,
   autoCycle: false,
   bassMode: true,
@@ -1078,7 +1078,7 @@ function syncPipColors() {
   if (!state.pipWindow) return;
   const computed = getComputedStyle(document.body);
   const root = state.pipWindow.document.documentElement;
-  const vars = ['--bg', '--bg-soft', '--panel', '--border', '--text', '--acc1'];
+  const vars = ['--bg', '--bg-soft', '--panel', '--border', '--text', '--acc1', '--acc2', '--glow-hi'];
   vars.forEach(v => {
     let val = computed.getPropertyValue(v).trim();
     if (val) root.style.setProperty(v, val);
@@ -2176,6 +2176,8 @@ async function requestPip(isAuto = false) {
           button { font-weight: bold; color: var(--acc1); border-color: var(--acc1); }
           option { background: var(--bg); color: var(--text); font-family: monospace; }
           body.controls-hidden #pip-controls { transform: translateY(100%); opacity: 0; pointer-events: none; }
+          #pip-sens { -webkit-appearance: none; appearance: none; width: 80px; height: 4px; border-radius: 999px; outline: none; cursor: pointer; background: linear-gradient(90deg, var(--acc2, #b835ff), var(--acc1)); }
+          #pip-sens::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--text); box-shadow: 0 0 10px var(--glow-hi, var(--acc1)); }
         </style>
         <div id="canvas-container">
           <canvas id="pip-canvas" width="600" height="320"></canvas>
@@ -2202,7 +2204,7 @@ async function requestPip(isAuto = false) {
           </select>
           <div style="display:flex;align-items:center;gap:4px;">
             <label for="pip-sens" style="font-size:10px;">SENS</label>
-            <input type="range" id="pip-sens" min="0.5" max="3" step="0.1" value="${state.sensitivity}" style="width:50px; cursor:pointer;" />
+            <input type="range" id="pip-sens" min="0.2" max="3.0" step="0.1" value="${state.sensitivity}" />
           </div>
         </div>
       `;
