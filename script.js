@@ -377,6 +377,37 @@ function hexToRgb(hex) {
   };
 }
 
+function getThemeGlowRGB(theme) {
+  if (state.autoCycle && state.theme !== 'bw') {
+    const h = state.colorHue;
+    const s = 1;
+    const l = 0.68;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    const m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+    if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+    else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+    else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+    else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+    else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    return {
+      r: Math.round((r + m) * 255),
+      g: Math.round((g + m) * 255),
+      b: Math.round((b + m) * 255)
+    };
+  }
+  return hexToRgb(theme.glowColor);
+}
+
+function getThemeGlowColor(theme) {
+  if (state.autoCycle && state.theme !== 'bw') {
+    return `hsla(${state.colorHue}, 100%, 68%, 1)`;
+  }
+  return theme.glowColor;
+}
+
 function extractColorFromMedia(mediaElement) {
   try {
     const c = document.createElement('canvas');
@@ -1373,46 +1404,65 @@ function drawBars(c, width, height) {
   const maxHeight = height * (theme.road ? 0.26 : 0.38);
   const cornerRadius = theme.label === 'BLACK & WHITE' ? 0 : Math.min(7, barWidth * 0.48);
 
+  const isBW = theme.label === 'BLACK & WHITE';
+  
+  c.save();
+
   for (let i = 0; i < count; i += 1) {
     const amp = getAmplitude(i, count);
-    const length = clamp(maxHeight * amp * 1.45 * (1 + (state.bassSmoothed || 0) * 0.5), theme.label === 'BLACK & WHITE' ? 3 : 4, maxHeight);
+    const length = clamp(maxHeight * amp * 1.45 * (1 + (state.bassSmoothed || 0) * 0.5), isBW ? 3 : 4, maxHeight);
     const x = i * (barWidth + gap);
-    const color = paletteColor(i / count, theme.label === 'BLACK & WHITE' ? 0.86 : 1);
 
-    c.save();
-    c.fillStyle = color;
-    if (theme.label === 'BLACK & WHITE') {
+    if (isBW) {
+      c.fillStyle = 'rgba(255, 255, 255, 0.86)';
       c.fillRect(x, centerY - length, barWidth, length * 2);
       if (state.beatActive && i % 8 === 0) {
         c.fillStyle = 'rgba(255, 255, 255, 0.9)';
         c.fillRect(x, centerY - length - 2, barWidth, 2);
       }
     } else {
+      const colorFull = paletteColor(i / count, 1);
       const gradient = c.createLinearGradient(x, centerY - length, x, centerY + length);
-      gradient.addColorStop(0, paletteColor(i / count, 1));
-      gradient.addColorStop(0.5, paletteColor(i / count, 0.22));
-      gradient.addColorStop(1, paletteColor(i / count, 1));
+      gradient.addColorStop(0, colorFull);
+      gradient.addColorStop(0.5, paletteColor(i / count, 0.22)); // Exact original design
+      gradient.addColorStop(1, colorFull);
+      
+      // Fast premium glow logic using layered screen shapes instead of laggy shadowBlur filter
+      c.globalCompositeOperation = 'screen';
+      c.fillStyle = colorFull;
+      
+      // Outer soft aura
+      c.globalAlpha = 0.15 * theme.glowIntensity;
+      c.beginPath();
+      roundRect(c, x - 4, centerY - length - 4, barWidth + 8, length * 2 + 8, cornerRadius + 2);
+      c.fill();
+      
+      // Inner bright aura
+      c.globalAlpha = 0.3 * theme.glowIntensity;
+      c.beginPath();
+      roundRect(c, x - 1.5, centerY - length - 1.5, barWidth + 3, length * 2 + 3, cornerRadius + 1);
+      c.fill();
+      
+      // Reset composite to draw the exact original core bar on top
+      c.globalCompositeOperation = 'source-over';
+      c.globalAlpha = 1.0;
+      
       c.fillStyle = gradient;
+      c.beginPath();
       roundRect(c, x, centerY - length, barWidth, length * 2, cornerRadius);
       c.fill();
-      glow(c, color, length * theme.glowIntensity * 0.25 + 8, () => {
-        c.fillStyle = gradient;
-        roundRect(c, x, centerY - length, barWidth, length * 2, cornerRadius);
-        c.fill();
-      });
     }
-    c.restore();
   }
 
-  c.save();
-  c.strokeStyle = theme.label === 'BLACK & WHITE'
+  c.strokeStyle = isBW
     ? 'rgba(255, 255, 255, 0.16)'
     : spectralLinear(c, 0, centerY, width, centerY, 0.32);
-  c.lineWidth = theme.label === 'BLACK & WHITE' ? 1 : 1.6;
+  c.lineWidth = isBW ? 1 : 1.6; // Undid the baseline width change to retain original design
   c.beginPath();
   c.moveTo(0, centerY);
   c.lineTo(width, centerY);
   c.stroke();
+  
   c.restore();
 }
 
@@ -1489,40 +1539,30 @@ function drawReactiveBackgroundCircle(c, cx, cy, baseRadius, theme) {
   }
 
   const beatBoost = state.beatActive ? 1.6 : 1.0;
-  const maxAmp = baseRadius * 1.3 * beatBoost; 
+  const maxAmp = baseRadius * 1.5 * beatBoost; 
   
-  const rgb = hexToRgb(theme.glowColor);
-  const colorInner = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1.0)`;
-  const colorMid = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`;
-  const colorOuter = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.2)`;
+  const rgb = getThemeGlowRGB(theme);
+  const r = Math.floor(Math.min(255, rgb.r * 1.3 + 40));
+  const g = Math.floor(Math.min(255, rgb.g * 1.3 + 40));
+  const b = Math.floor(Math.min(255, rgb.b * 1.3 + 40));
+  
+  const colorInner = `rgba(${Math.min(255, r+30)}, ${Math.min(255, g+30)}, ${Math.min(255, b+30)}, 0.95)`;
+  const colorMid = `rgba(${r}, ${g}, ${b}, 0.75)`;
+  const colorOuter = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4)`;
   
   const glowMult = state.glowMultiplier || 1;
-  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 1.0, colorOuter, data, 40 * glowMult);
-  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.6, colorMid, data, 15 * glowMult);
-  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.3, colorInner, data, 0);
-}
-
-function drawReactiveBackgroundCircle(c, cx, cy, baseRadius, theme) {
-  if (!state.running || !state.freqData) return;
   
-  const bins = Math.min(90, state.bufferLength);
-  const data = [];
-  for (let i = 0; i < bins; i++) {
-    data.push(state.freqData[i] / 255);
+  c.save();
+  if (theme.label !== 'BLACK & WHITE') {
+    c.globalCompositeOperation = 'screen';
   }
-
-  const beatBoost = state.beatActive ? 1.6 : 1.0;
-  const maxAmp = baseRadius * 1.3 * beatBoost; 
-  
-  const rgb = hexToRgb(theme.glowColor);
-  const colorInner = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1.0)`;
-  const colorMid = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`;
-  const colorOuter = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.2)`;
-  
-  const glowMult = state.glowMultiplier || 1;
-  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 1.0, colorOuter, data, 40 * glowMult);
-  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.6, colorMid, data, 15 * glowMult);
-  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.3, colorInner, data, 0);
+  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 1.0, colorOuter, data, 50 * glowMult);
+  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.6, colorMid, data, 25 * glowMult);
+  if (theme.label !== 'BLACK & WHITE') {
+    c.globalCompositeOperation = 'lighter';
+  }
+  drawFluidLayer(c, cx, cy, baseRadius, maxAmp * 0.3, colorInner, data, 10 * glowMult);
+  c.restore();
 }
 
 function drawRadial(c, width, height) {
@@ -1530,7 +1570,7 @@ function drawRadial(c, width, height) {
   const cx = width / 2;
   const cy = height / 2;
   const dim = Math.min(width, height);
-  const ringRadius = dim * (theme.road ? 0.18 : 0.2);
+  const ringRadius = dim * (theme.road ? 0.18 : 0.22); // slightly larger
 
   drawReactiveBackgroundCircle(c, cx, cy, ringRadius, theme);
   drawCenterOrb(c, cx, cy, ringRadius * 0.64, theme);
@@ -1538,50 +1578,77 @@ function drawRadial(c, width, height) {
 
 function drawRadialWave(c, cx, cy, radius, theme) {
   const points = Math.min(state.timeData.length, 512);
-  c.save();
-  c.beginPath();
+  const wavePoints = [];
+  
   for (let i = 0; i <= points; i += 1) {
     const sample = state.timeData[i % points] / 128 - 1;
     const angle = (i / points) * Math.PI * 2 - Math.PI / 2 - state.radialAngle * 0.4;
-    const wobble = sample * radius * 0.24 * state.sensitivity * (theme.label === 'BLACK & WHITE' ? 1.4 : 0.8) * (1 + (state.bassSmoothed || 0) * 1.5);
+    const wobble = sample * radius * 0.35 * state.sensitivity * (theme.label === 'BLACK & WHITE' ? 1.4 : 1.2) * (1 + (state.bassSmoothed || 0) * 1.8);
     const r = radius + wobble;
-    const x = cx + Math.cos(angle) * r;
-    const y = cy + Math.sin(angle) * r;
-    if (i === 0) {
-      c.moveTo(x, y);
-    } else {
-      c.lineTo(x, y);
+    wavePoints.push({ x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r });
+  }
+
+  const drawGlowingRing = (lineWidth, blur, alpha, color) => {
+    c.save();
+    c.beginPath();
+    c.moveTo(wavePoints[0].x, wavePoints[0].y);
+    for (let i = 1; i < wavePoints.length; i++) {
+      c.lineTo(wavePoints[i].x, wavePoints[i].y);
     }
-  }
-  c.closePath();
-  c.strokeStyle = theme.label === 'BLACK & WHITE'
-    ? 'rgba(255, 255, 255, 0.85)'
-    : spectralLinear(c, cx - radius, cy, cx + radius, cy, 0.8);
-  c.lineWidth = theme.label === 'BLACK & WHITE' ? 1 : 2;
-  if (theme.label !== 'BLACK & WHITE') {
-    c.shadowColor = paletteColor(0.4, 0.8);
-    c.shadowBlur = 14 * theme.glowIntensity;
-  }
-  c.stroke();
-  c.restore();
+    c.closePath();
+    c.strokeStyle = color;
+    c.lineWidth = lineWidth;
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    c.shadowColor = color;
+    c.shadowBlur = blur;
+    c.globalAlpha = alpha;
+    c.stroke();
+    c.restore();
+  };
+
+  const isBW = theme.label === 'BLACK & WHITE';
+  const baseColor = isBW ? 'rgba(255, 255, 255, 1)' : spectralLinear(c, cx - radius, cy, cx + radius, cy, 1);
+  const glowColor = isBW ? 'rgba(255, 255, 255, 1)' : getThemeGlowColor(theme);
+
+  drawGlowingRing(6, 35 * theme.glowIntensity, 0.5, glowColor);
+  drawGlowingRing(3, 15 * theme.glowIntensity, 0.8, baseColor);
+  drawGlowingRing(1.5, 5, 1.0, 'rgba(255, 255, 255, 0.95)'); // Hot white core
 }
 
 function drawCenterOrb(c, cx, cy, radius, theme) {
-  const orb = c.createRadialGradient(cx, cy, 0, cx, cy, radius * (1.7 + state.energySmoothed * 0.9));
-  if (theme.label === 'BLACK & WHITE') {
-    orb.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-    orb.addColorStop(0.45, 'rgba(200, 200, 200, 0.26)');
+  const isBW = theme.label === 'BLACK & WHITE';
+  const glowRadius = radius * (2.4 + state.energySmoothed * 2.0);
+  
+  const orb = c.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
+  if (isBW) {
+    orb.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    orb.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
+    orb.addColorStop(0.6, 'rgba(200, 200, 200, 0.2)');
     orb.addColorStop(1, 'rgba(255, 255, 255, 0)');
   } else {
-    orb.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-    orb.addColorStop(0.28, paletteColor(0.35, 0.76));
-    orb.addColorStop(0.7, paletteColor(0.75, 0.18));
-    orb.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    const rgb = getThemeGlowRGB(theme);
+    const hr = Math.floor(Math.min(255, rgb.r*1.5+100));
+    const hg = Math.floor(Math.min(255, rgb.g*1.5+100));
+    const hb = Math.floor(Math.min(255, rgb.b*1.5+100));
+    const hotCore = `rgba(${hr}, ${hg}, ${hb}, 1)`;
+    const midGlow = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.7)`;
+    const outerGlow = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`;
+    
+    orb.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    orb.addColorStop(0.12, hotCore);
+    orb.addColorStop(0.4, midGlow);
+    orb.addColorStop(0.7, outerGlow);
+    orb.addColorStop(1, 'rgba(0, 0, 0, 0)');
   }
+  
   c.save();
+  if (!isBW) {
+    c.globalCompositeOperation = 'screen';
+  }
   c.fillStyle = orb;
   c.beginPath();
-  c.arc(cx, cy, radius * (1.5 + state.energySmoothed * 0.6), 0, Math.PI * 2);
+  c.arc(cx, cy, glowRadius, 0, Math.PI * 2);
   c.fill();
   c.restore();
 }
@@ -1589,60 +1656,88 @@ function drawCenterOrb(c, cx, cy, radius, theme) {
 function drawWave(c, width, height) {
   const theme = themeConfig();
   const centerY = height * (theme.road ? 0.56 : 0.5);
-  const samples = state.timeData.length;
-  const step = width / samples;
+  
+  const samples = Math.min(state.timeData.length, 256);
+  const dataStep = state.timeData.length / samples;
+  const step = width / (samples - 1);
   const points = [];
-  const ampScale = height * (theme.label === 'ROCK MODE' ? 0.34 : theme.road ? 0.18 : 0.24);
+  const ampScale = height * (theme.label === 'ROCK MODE' ? 0.34 : theme.road ? 0.18 : 0.35);
 
   for (let i = 0; i < samples; i += 1) {
-    const sample = state.timeData[i] / 128 - 1;
+    const dataIndex = Math.floor(i * dataStep);
+    const safeIndex = Math.min(dataIndex, state.timeData.length - 1);
+    const sample = state.timeData[safeIndex] / 128 - 1;
     points.push({
       x: i * step,
-      y: centerY + sample * ampScale * state.sensitivity * (1 + (state.bassSmoothed || 0) * 0.6)
+      y: centerY + sample * ampScale * state.sensitivity * (1 + (state.bassSmoothed || 0) * 1.2)
     });
   }
 
+  const isBW = theme.label === 'BLACK & WHITE';
+
   c.save();
+  if (!isBW) {
+    c.globalCompositeOperation = 'screen'; // This makes the colors actually bloom!
+  }
+
   c.beginPath();
   c.moveTo(0, centerY);
   drawSmoothPath(c, points, theme.waveformSmoothness);
   c.lineTo(width, centerY);
   c.closePath();
-  const fill = c.createLinearGradient(0, centerY - ampScale, 0, centerY + ampScale);
-  fill.addColorStop(0, paletteColor(0.15, theme.label === 'BLACK & WHITE' ? 0.16 : 0.24));
-  fill.addColorStop(0.5, paletteColor(0.5, theme.label === 'BLACK & WHITE' ? 0.04 : 0.08));
+  
+  const fill = c.createLinearGradient(0, centerY - ampScale * 1.5, 0, centerY + ampScale * 1.5);
+  if (isBW) {
+    fill.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+    fill.addColorStop(0.5, 'rgba(255, 255, 255, 0.05)');
+  } else {
+    fill.addColorStop(0, paletteColor(0.2, 0.6));
+    fill.addColorStop(0.5, paletteColor(0.8, 0.15));
+  }
   fill.addColorStop(1, 'rgba(0, 0, 0, 0)');
   c.fillStyle = fill;
   c.fill();
-  c.restore();
 
-  c.save();
-  c.beginPath();
-  c.moveTo(points[0].x, points[0].y);
-  drawSmoothPath(c, points, theme.waveformSmoothness);
-  c.strokeStyle = theme.label === 'BLACK & WHITE'
-    ? 'rgba(255, 255, 255, 0.92)'
-    : spectralLinear(c, 0, 0, width, 0, 1);
-  c.lineWidth = theme.lineWidth;
-  c.lineCap = 'round';
-  c.lineJoin = 'round';
-  if (theme.label !== 'BLACK & WHITE') {
-    c.shadowColor = paletteColor(0.45, 0.7);
-    c.shadowBlur = 18 * theme.glowIntensity;
-  }
-  c.stroke();
-  c.restore();
+  const drawGlowingLine = (lineWidth, blur, alpha, color) => {
+    c.beginPath();
+    c.moveTo(points[0].x, points[0].y);
+    drawSmoothPath(c, points, theme.waveformSmoothness);
+    c.strokeStyle = color;
+    c.lineWidth = lineWidth;
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    if (blur > 0) {
+      c.shadowColor = color;
+      c.shadowBlur = blur;
+    } else {
+      c.shadowBlur = 0;
+    }
+    c.globalAlpha = alpha;
+    c.stroke();
+  };
+
+  const baseColor = isBW ? 'rgba(255, 255, 255, 1)' : spectralLinear(c, 0, 0, width, 0, 1);
+  const glowColor = isBW ? 'rgba(255, 255, 255, 1)' : getThemeGlowColor(theme);
+
+  drawGlowingLine(theme.lineWidth * 6, 40 * theme.glowIntensity, 0.5, glowColor);
+  drawGlowingLine(theme.lineWidth * 3, 20 * theme.glowIntensity, 0.8, baseColor);
+  
+  if (!isBW) c.globalCompositeOperation = 'lighter';
+  drawGlowingLine(theme.lineWidth * 1.2, 5, 1.0, 'rgba(255, 255, 255, 1)');
 
   if (theme.label === 'ROCK MODE') {
-    c.save();
+    c.globalCompositeOperation = 'screen';
     c.beginPath();
-    c.moveTo(points[0].x, points[0].y + 8);
-    drawSmoothPath(c, points.map((point) => ({ x: point.x, y: point.y + 8 })), 0.18);
-    c.strokeStyle = 'rgba(95, 156, 255, 0.55)';
-    c.lineWidth = 1.6;
+    c.moveTo(points[0].x, points[0].y + 12);
+    drawSmoothPath(c, points.map((point) => ({ x: point.x, y: point.y + 12 })), 0.18);
+    c.strokeStyle = 'rgba(95, 156, 255, 0.8)';
+    c.lineWidth = 2;
+    c.shadowColor = 'rgba(95, 156, 255, 1)';
+    c.shadowBlur = 10;
     c.stroke();
-    c.restore();
   }
+  
+  c.restore();
 }
 
 function drawParticlesMode(c, width, height) {
