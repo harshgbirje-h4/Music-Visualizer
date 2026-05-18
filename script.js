@@ -160,18 +160,18 @@ const THEMES = {
   chill: {
     label: 'CHILL MODE',
     tagline: 'Relaxing night drives',
-    palette: ['#00f0ff', '#9d00ff', '#ff0055', '#9d00ff'],
-    glowColor: '#00f0ff',
+    palette: ['#a975fa', '#6b5bdb', '#845ef7', '#b197fa'],
+    glowColor: '#a975fa',
     background: ['#0a0514', '#170b29', '#2d1445'],
     analyserSmoothing: 0.68,
     beatScaleBoost: 0.015,
     beatFlashDuration: 200,
     beatCooldownMax: 24,
-    barSharpness: 0.7,
-    lineWidth: 3,
-    glowIntensity: 1.2,
-    amplitude: 0.85,
-    animationSpeed: 0.35,
+    barSharpness: 0.5,
+    lineWidth: 2,
+    glowIntensity: 0.4,
+    amplitude: 0.6,
+    animationSpeed: 0.3,
     bgParticleCount: 40,
     bgParticleSpeed: 0.3,
     particleTrail: 0.2,
@@ -579,7 +579,11 @@ function paletteColor(t, alpha = 1) {
     return `hsla(${hue}, 100%, 68%, ${alpha})`;
   }
 
-  const palette = theme.palette;
+  let palette = theme.palette;
+  if (state.theme === 'chill' && state.mode === 'bars') {
+    palette = ['#00f0ff', '#9d00ff', '#ff0055', '#9d00ff'];
+  }
+  
   const scaled = clamp(t, 0, 0.9999) * (palette.length - 1);
   const index = Math.floor(scaled);
   const next = Math.min(palette.length - 1, index + 1);
@@ -1431,14 +1435,17 @@ function drawBars(c, width, height) {
       c.globalCompositeOperation = 'screen';
       c.fillStyle = colorFull;
       
+      let currentGlowInt = theme.glowIntensity;
+      if (state.theme === 'chill') currentGlowInt = 1.2;
+      
       // Outer soft aura
-      c.globalAlpha = 0.15 * theme.glowIntensity;
+      c.globalAlpha = 0.15 * currentGlowInt;
       c.beginPath();
       roundRect(c, x - 4, centerY - length - 4, barWidth + 8, length * 2 + 8, cornerRadius + 2);
       c.fill();
       
       // Inner bright aura
-      c.globalAlpha = 0.3 * theme.glowIntensity;
+      c.globalAlpha = 0.3 * currentGlowInt;
       c.beginPath();
       roundRect(c, x - 1.5, centerY - length - 1.5, barWidth + 3, length * 2 + 3, cornerRadius + 1);
       c.fill();
