@@ -1597,6 +1597,7 @@ function drawRadialWave(c, cx, cy, radius, theme) {
 
   const drawGlowingRing = (lineWidth, blur, alpha, color) => {
     c.save();
+    if (!isBW) c.globalCompositeOperation = 'screen';
     c.beginPath();
     c.moveTo(wavePoints[0].x, wavePoints[0].y);
     for (let i = 1; i < wavePoints.length; i++) {
@@ -1604,12 +1605,10 @@ function drawRadialWave(c, cx, cy, radius, theme) {
     }
     c.closePath();
     c.strokeStyle = color;
-    c.lineWidth = lineWidth;
+    c.lineWidth = lineWidth + (blur * 0.8);
     c.lineCap = 'round';
     c.lineJoin = 'round';
-    c.shadowColor = color;
-    c.shadowBlur = blur;
-    c.globalAlpha = alpha;
+    c.globalAlpha = alpha * 0.75;
     c.stroke();
     c.restore();
   };
@@ -1710,16 +1709,10 @@ function drawWave(c, width, height) {
     c.moveTo(points[0].x, points[0].y);
     drawSmoothPath(c, points, theme.waveformSmoothness);
     c.strokeStyle = color;
-    c.lineWidth = lineWidth;
+    c.lineWidth = lineWidth + (blur * 0.8);
     c.lineCap = 'round';
     c.lineJoin = 'round';
-    if (blur > 0) {
-      c.shadowColor = color;
-      c.shadowBlur = blur;
-    } else {
-      c.shadowBlur = 0;
-    }
-    c.globalAlpha = alpha;
+    c.globalAlpha = alpha * 0.75;
     c.stroke();
   };
 
