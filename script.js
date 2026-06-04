@@ -238,6 +238,14 @@ const THEMES = {
 };
 
 const state = {
+  threeVortexSupported: true,
+  threeVortexInitialized: false,
+  threeVortexScene: null,
+  threeVortexCamera: null,
+  threeVortexRenderer: null,
+  threeVortexComposer: null,
+  threeVortexData: null,
+
   audioCtx: null,
   analyser: null,
   source: null,
@@ -288,7 +296,10 @@ const state = {
   visualizer: null,
   presets: null,
   presetKeys: [],
-  bcLastCycle: 0
+  bcLastCycle: 0,
+  vortexQuality: 'low',
+  vortexLoadAvg: 0,
+  vortexGeometryCache: new Map()
 };
 
 const canvas = document.getElementById('viz-canvas');
@@ -333,6 +344,31 @@ const miniCloseBtn = document.getElementById('mini-close');
 const miniPipBtn = document.getElementById('mini-pip-btn');
 const miniSourceLabel = document.getElementById('mini-source-label');
 
+function applyIntroTitleMobileFix() {
+  const title = document.getElementById('intro-title');
+  if (!title) return;
+
+  if (window.innerWidth <= 600) {
+    title.style.fontSize = Math.min(window.innerWidth * 0.11, 42) + 'px';
+    title.style.letterSpacing = '0.3rem';
+    title.style.paddingLeft = '0.3rem';
+    title.style.marginLeft = '0';
+    title.style.background = 'transparent';
+  }
+
+  if (window.innerWidth <= 480) {
+    title.style.fontSize = Math.min(window.innerWidth * 0.09, 32) + 'px';
+    title.style.letterSpacing = '0.2rem';
+  }
+}
+
+// Pre-allocated vortex ring buffers — declared once at module level to avoid
+// per-frame GC pressure inside drawVortex.
+const _vortexPrevX = new Float32Array(64);
+const _vortexPrevY = new Float32Array(64);
+const _vortexCurrX = new Float32Array(64);
+const _vortexCurrY = new Float32Array(64);
+
 function themeConfig() {
   return THEMES[state.theme] || THEMES.classic;
 }
@@ -344,7 +380,6 @@ function resizeCanvas() {
   canvas.width = bgCanvas.width = w;
   canvas.height = bgCanvas.height = h;
 
-  // Set the butterchurn canvas pixel dimensions to match the actual pixels for high quality
   const bcCanvas = document.getElementById('butterchurn-canvas');
   if (bcCanvas) {
     bcCanvas.width = w * dpr;
@@ -354,6 +389,10 @@ function resizeCanvas() {
   if (state.visualizer) {
     // Tell butterchurn the actual pixel dimensions for rendering
     state.visualizer.setRendererSize(w * dpr, h * dpr);
+  }
+  
+  if (typeof resizeThreeVortex === 'function') {
+    resizeThreeVortex();
   }
 }
 
@@ -416,7 +455,7 @@ function extractColorFromMedia(mediaElement) {
     c.height = 64;
     cx.drawImage(mediaElement, 0, 0, 64, 64);
     const data = cx.getImageData(0, 0, 64, 64).data;
-    
+
     let r = 0, g = 0, b = 0, count = 0;
     for (let i = 0; i < data.length; i += 4) {
       if (data[i+3] > 0) {
@@ -427,11 +466,11 @@ function extractColorFromMedia(mediaElement) {
       }
     }
     if (count === 0) return '#00ffcc';
-    
+
     r = Math.floor(r / count);
     g = Math.floor(g / count);
     b = Math.floor(b / count);
-    
+
     const max = Math.max(r, g, b);
     if (max < 150 && max > 0) {
       const scale = 255 / max;
@@ -439,7 +478,7 @@ function extractColorFromMedia(mediaElement) {
       g = Math.min(255, Math.floor(g * scale));
       b = Math.min(255, Math.floor(b * scale));
     }
-    
+
     const toHex = (n) => n.toString(16).padStart(2, '0');
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   } catch(e) {
@@ -451,21 +490,21 @@ function updateCustomThemeColor(hex) {
   const custom = THEMES.custom;
   custom.glowColor = hex;
   custom.palette[0] = hex;
-  
+
   const r = parseInt(hex.slice(1,3), 16);
   const g = parseInt(hex.slice(3,5), 16);
   const b = parseInt(hex.slice(5,7), 16);
-  
+
   const toHex = (r,g,b) => `#${Math.min(255,Math.max(0,Math.floor(r))).toString(16).padStart(2,'0')}${Math.min(255,Math.max(0,Math.floor(g))).toString(16).padStart(2,'0')}${Math.min(255,Math.max(0,Math.floor(b))).toString(16).padStart(2,'0')}`;
-  
+
   custom.palette[1] = toHex(r*0.8, g*1.2, b*1.2);
   custom.palette[2] = toHex(r*0.6, g*0.8, b*1.5);
   custom.palette[3] = toHex(r*0.4, g*0.6, b*0.8);
-  
+
   custom.background[0] = toHex(r*0.02, g*0.02, b*0.02);
   custom.background[1] = toHex(r*0.06, g*0.06, b*0.06);
   custom.background[2] = toHex(r*0.1, g*0.1, b*0.1);
-  
+
   if (state.theme === 'custom') {
     document.body.style.setProperty('--acc1', hex);
     document.body.style.setProperty('--glow', `rgba(${r}, ${g}, ${b}, 0.3)`);
@@ -473,7 +512,7 @@ function updateCustomThemeColor(hex) {
     document.body.style.setProperty('--bg', custom.background[0]);
     document.body.style.setProperty('--bg-soft', custom.background[1]);
     document.body.style.setProperty('--panel', `rgba(${r*0.08}, ${g*0.08}, ${b*0.08}, 0.84)`);
-    
+
     applyTheme('custom', true);
   }
   syncPipColors();
@@ -545,7 +584,7 @@ function updateMilkdropFilter(bcCanvas) {
       const rgb = hexToRgb(customHex);
       const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
       // Map HSL to CSS filter shifts
-      const hueShift = Math.round(hsl.h - 40 + 360) % 360; 
+      const hueShift = Math.round(hsl.h - 40 + 360) % 360;
       const satVal = Math.max(1.5, hsl.s / 30);
       bcCanvas.style.filter = `sepia(1) saturate(${satVal}) hue-rotate(${hueShift}deg) contrast(1.05) brightness(1.1)`;
       break;
@@ -558,15 +597,33 @@ function updateMilkdropFilter(bcCanvas) {
 
 function updateModeVisibility() {
   const isMilkdrop = state.mode === 'milkdrop';
+  const isVortex   = state.mode === 'vortex';
+  const showBc     = isMilkdrop;
+
   document.body.classList.toggle('milkdrop-mode', isMilkdrop);
+  document.body.classList.toggle('vortex-mode', isVortex);
+
+  const threeCanvas = document.getElementById('three-canvas');
+  if (threeCanvas) {
+    if (isVortex && state.threeVortexSupported) {
+      threeCanvas.style.display = 'block';
+    } else {
+      threeCanvas.style.display = 'none';
+    }
+  }
+
   const bcCanvas = document.getElementById('butterchurn-canvas');
   if (bcCanvas) {
-    bcCanvas.style.opacity = isMilkdrop ? '1' : '0';
-    if (isMilkdrop) {
+    bcCanvas.style.opacity = showBc ? '1' : '0';
+    bcCanvas.style.zIndex = '5';
+    if (showBc) {
       updateMilkdropFilter(bcCanvas);
+    } else {
+      bcCanvas.style.filter = '';
     }
   }
 }
+
 
 function mix(a, b, t) {
   return a + (b - a) * t;
@@ -583,7 +640,7 @@ function paletteColor(t, alpha = 1) {
   if (state.theme === 'chill' && state.mode === 'bars') {
     palette = ['#e066ff', '#bc20ff', '#8b00ff', '#c738ff'];
   }
-  
+
   const scaled = clamp(t, 0, 0.9999) * (palette.length - 1);
   const index = Math.floor(scaled);
   const next = Math.min(palette.length - 1, index + 1);
@@ -621,17 +678,26 @@ function ensureCtx() {
     state.bufferLength = state.analyser.frequencyBinCount;
     state.freqData = new Uint8Array(state.bufferLength);
     state.timeData = new Uint8Array(state.analyser.fftSize);
-    
+
     if (window.butterchurn && window.butterchurnPresets) {
       const bcCanvas = document.getElementById('butterchurn-canvas');
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = window.innerWidth;
       const h = window.innerHeight;
-      
+
       // Scale canvas for high-DPI sharpness
       bcCanvas.width = w * dpr;
       bcCanvas.height = h * dpr;
-      
+
+      // Force preserveDrawingBuffer: true so we can copy the WebGL canvas to the Picture-in-Picture canvas
+      try {
+        bcCanvas.getContext('webgl2', { preserveDrawingBuffer: true });
+      } catch (e) {
+        try {
+          bcCanvas.getContext('webgl', { preserveDrawingBuffer: true });
+        } catch (err) {}
+      }
+
       // Use pixelRatio:1 since we are manually scaling the canvas dimensions above
       state.visualizer = butterchurn.default.createVisualizer(state.audioCtx, bcCanvas, {
         width: w * dpr,
@@ -655,10 +721,11 @@ function loadThemePreset(themeName) {
   if (!state.visualizer || !state.presets) return;
 
   // Use the FULL preset pool - no keyword restrictions that cause white screens / repeated patterns.
-  // All themes get the same gorgeous random patterns; color identity comes from CSS filters above.
   const blacklistRegex = /unknown|blank|test\b|untitled|empty/i;
   let pool = state.presetKeys.filter(k => !blacklistRegex.test(k));
   if (pool.length === 0) pool = state.presetKeys;
+
+  let blendTime = 2.5;
 
   // Avoid picking the same preset twice in a row
   let attempts = 0, randomKey;
@@ -668,7 +735,7 @@ function loadThemePreset(themeName) {
   } while (randomKey === state.lastPresetKey && attempts < 10);
   state.lastPresetKey = randomKey;
 
-  state.visualizer.loadPreset(state.presets[randomKey], 2.5);
+  state.visualizer.loadPreset(state.presets[randomKey], blendTime);
 }
 
 function disconnectSource() {
@@ -767,7 +834,7 @@ async function initScreen() {
     }
     state.source = state.audioCtx.createMediaStreamSource(new MediaStream(audioTracks));
     state.source.connect(state.analyser);
-    
+
     // Prevent Chrome from suspending the stream when there's no audio output
     if (!state.dummyAudio) {
       state.dummyAudio = new Audio();
@@ -775,7 +842,7 @@ async function initScreen() {
     }
     state.dummyAudio.srcObject = state.stream;
     state.dummyAudio.play().catch(() => {});
-    
+
     state.stream.getVideoTracks()[0]?.addEventListener('ended', () => {
       if (state.audioSource === 'screen' && state.running) {
         showToast('Screen sharing ended.');
@@ -929,10 +996,12 @@ function renderLoop(fromWorker = false) {
     return;
   }
 
+  const frameStart = performance.now();
+
   if (!fromWorker) {
     state.animFrameId = requestAnimationFrame(() => renderLoop(false));
   }
-  
+
   if (document.hidden && !fromWorker) {
     return; // Let the background worker handle it to avoid double rendering
   }
@@ -957,23 +1026,23 @@ function renderLoop(fromWorker = false) {
       bassSum += state.freqData[i];
   }
   let rawBass = (bassSum / bassBins / 255) * state.sensitivity;
-  
+
   if (typeof state.bassVelocity === 'undefined') state.bassVelocity = 0;
-  
+
   // Spring physics for true bouncy effect
   const stiffness = 0.85; // High stiffness snaps instantly to the beat, removing delay
   const damping = 0.4;   // Quick settle for a snappy bounce
-  
+
   const force = (rawBass - state.bassSmoothed) * stiffness;
   state.bassVelocity += force;
   state.bassVelocity *= damping;
   state.bassSmoothed += state.bassVelocity;
   state.bassSmoothed = Math.max(0, state.bassSmoothed); // Prevent collapsing inward
-  
+
   const pumpScale = state.bassMode ? 1 + (state.bassSmoothed * 0.2) : 1;
   state.glowMultiplier = state.bassMode ? 1 + (state.bassSmoothed * 1.2) : 1;
 
-  if (state.bassMode) {
+  if (state.bassMode && state.mode !== 'vortex') {
       document.body.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
   } else {
       document.body.style.transform = '';
@@ -987,6 +1056,10 @@ function renderLoop(fromWorker = false) {
   state.roadOffset += theme.animationSpeed * (0.8 + state.energySmoothed * 4);
   if (state.autoCycle) {
     state.colorHue = (state.colorHue + theme.animationSpeed * 1.4) % 360;
+    const bcCanvas = document.getElementById('butterchurn-canvas');
+    if (bcCanvas && state.mode === 'milkdrop') {
+      updateMilkdropFilter(bcCanvas);
+    }
   }
 
   if (state.mode === 'milkdrop' && state.visualizer) {
@@ -995,9 +1068,7 @@ function renderLoop(fromWorker = false) {
       state.bcLastCycle = performance.now();
     }
     state.visualizer.render();
-    
-    // SKIP 2D DRAWING in milkdrop mode to maximize performance and sharpness
-    // We only need to clear the main canvas if it was previously drawing something
+
     if (state._wasNotMilkdrop) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       state._wasNotMilkdrop = false;
@@ -1006,27 +1077,42 @@ function renderLoop(fromWorker = false) {
     state._wasNotMilkdrop = true;
     const width = canvas.width;
     const height = canvas.height;
+    const isVortex = state.mode === 'vortex';
     ctx.save();
     ctx.translate(width / 2, height / 2);
-    ctx.scale(state.beatScale * pumpScale, state.beatScale * pumpScale);
+    if (isVortex) {
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, width, height);
+    } else {
+      ctx.scale(state.beatScale * pumpScale, state.beatScale * pumpScale);
+    }
     ctx.translate(-width / 2, -height / 2);
-    drawBackground(ctx, width, height);
-    if (state.showBgFx) {
-      drawAmbientOverlay(ctx, width, height);
+    if (isVortex) {
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, width, height);
+    } else {
+      drawBackground(ctx, width, height);
+      if (state.showBgFx) {
+        drawAmbientOverlay(ctx, width, height);
+      }
     }
     drawMode(ctx, width, height);
-    drawThemeForeground(ctx, width, height);
+    if (!isVortex) {
+      drawThemeForeground(ctx, width, height);
+    }
     ctx.restore();
   }
 
-  if (state.showBgFx) {
+  if (state.showBgFx && state.mode !== 'vortex') {
     drawBgCanvas();
   } else {
     bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
   }
   const pipVideo = document.getElementById('pip-video');
   const isPipActive = pipVideo && document.pictureInPictureElement === pipVideo;
-  
+
   if (!miniOverlayEl.classList.contains('hidden') || pipVideo) {
     renderPip(miniCtx, miniCanvas.width, miniCanvas.height);
     if (state.bassMode) {
@@ -1035,7 +1121,7 @@ function renderLoop(fromWorker = false) {
       miniCanvas.style.transform = '';
     }
   }
-  
+
   if (state.pipWindow && state.pipCtx && state.pipCanvas) {
     renderPip(state.pipCtx, state.pipCanvas.width, state.pipCanvas.height);
     if (state.bassMode) {
@@ -1046,6 +1132,33 @@ function renderLoop(fromWorker = false) {
   }
 
   syncPopup();
+
+  if (state.mode === 'vortex') {
+    const renderCost = performance.now() - frameStart;
+    state.vortexLoadAvg = state.vortexLoadAvg
+      ? (state.vortexLoadAvg * 0.9) + (renderCost * 0.1)
+      : renderCost;
+
+    if (state.vortexLoadAvg > 24) {
+      if (state.vortexQuality === 'high') {
+        state.vortexQuality = 'medium';
+      } else if (state.vortexQuality === 'medium' || state.vortexQuality === 'balanced') {
+        state.vortexQuality = 'low';
+      }
+      state.vortexStableFrames = 0;
+    } else if (state.vortexLoadAvg < 14) {
+      state.vortexStableFrames = (state.vortexStableFrames || 0) + 1;
+      if (state.vortexStableFrames > 240 && state.vortexQuality === 'low') {
+        state.vortexQuality = 'medium';
+        state.vortexStableFrames = 0;
+      } else if (state.vortexStableFrames > 720 && (state.vortexQuality === 'medium' || state.vortexQuality === 'balanced')) {
+        state.vortexQuality = 'high';
+        state.vortexStableFrames = 0;
+      }
+    } else {
+      state.vortexStableFrames = 0;
+    }
+  }
 
   if (state.audioSource === 'file' && audioEl.duration) {
     const pct = (audioEl.currentTime / audioEl.duration) * 100;
@@ -1058,7 +1171,7 @@ function drawImageCover(ctx, img, cw, ch) {
   let imgW = img.naturalWidth || img.videoWidth || img.width;
   let imgH = img.naturalHeight || img.videoHeight || img.height;
   if (!imgW || !imgH) return;
-  
+
   const imgRatio = imgW / imgH;
   const canvasRatio = cw / ch;
   let drawWidth, drawHeight, offsetX, offsetY;
@@ -1096,12 +1209,24 @@ function drawBackground(c, width, height) {
   const c2 = hexToRgb(theme.background[1]);
   const c3 = hexToRgb(theme.background[2]);
 
-  bg.addColorStop(0, `rgba(${c1.r}, ${c1.g}, ${c1.b}, 0.7)`);
-  bg.addColorStop(0.5, `rgba(${c2.r}, ${c2.g}, ${c2.b}, 0.6)`);
-  bg.addColorStop(1, `rgba(${c3.r}, ${c3.g}, ${c3.b}, 0.8)`);
-  
+  if (state.mode === 'vortex') {
+    const topGlow = state.autoCycle && state.theme !== 'bw'
+      ? paletteColor(0.12, 0.2)
+      : `rgba(${c1.r}, ${c1.g}, ${c1.b}, 0.18)`;
+    const midGlow = state.autoCycle && state.theme !== 'bw'
+      ? paletteColor(0.42, 0.16)
+      : `rgba(${c2.r}, ${c2.g}, ${c2.b}, 0.12)`;
+    bg.addColorStop(0, topGlow);
+    bg.addColorStop(0.55, midGlow);
+    bg.addColorStop(1, `rgba(${c3.r}, ${c3.g}, ${c3.b}, 0.95)`);
+  } else {
+    bg.addColorStop(0, `rgba(${c1.r}, ${c1.g}, ${c1.b}, 0.7)`);
+    bg.addColorStop(0.5, `rgba(${c2.r}, ${c2.g}, ${c2.b}, 0.6)`);
+    bg.addColorStop(1, `rgba(${c3.r}, ${c3.g}, ${c3.b}, 0.8)`);
+  }
+
   c.clearRect(0, 0, width, height);
-  
+
   if (c === miniCtx || c === state.pipCtx) {
     if (state.theme === 'chill' || state.theme === 'study') {
       if (themeVideo && themeVideo.readyState >= 2 && !themeVideo.paused) {
@@ -1385,6 +1510,9 @@ function drawMode(c, width, height) {
     case 'wave':
       drawWave(c, width, height);
       break;
+    case 'vortex':
+      drawVortex(c, width, height);
+      break;
     case 'lyrics':
       break;
     default:
@@ -1409,7 +1537,7 @@ function drawBars(c, width, height) {
   const cornerRadius = theme.label === 'BLACK & WHITE' ? 0 : Math.min(7, barWidth * 0.48);
 
   const isBW = theme.label === 'BLACK & WHITE';
-  
+
   c.save();
 
   for (let i = 0; i < count; i += 1) {
@@ -1428,32 +1556,28 @@ function drawBars(c, width, height) {
       const colorFull = paletteColor(i / count, 1);
       const gradient = c.createLinearGradient(x, centerY - length, x, centerY + length);
       gradient.addColorStop(0, colorFull);
-      gradient.addColorStop(0.5, paletteColor(i / count, 0.22)); // Exact original design
+      gradient.addColorStop(0.5, paletteColor(i / count, 0.22));
       gradient.addColorStop(1, colorFull);
-      
-      // Fast premium glow logic using layered screen shapes instead of laggy shadowBlur filter
+
       c.globalCompositeOperation = 'screen';
       c.fillStyle = colorFull;
-      
+
       let currentGlowInt = theme.glowIntensity;
       if (state.theme === 'chill') currentGlowInt = 1.2;
-      
-      // Outer soft aura
+
       c.globalAlpha = 0.15 * currentGlowInt;
       c.beginPath();
       roundRect(c, x - 4, centerY - length - 4, barWidth + 8, length * 2 + 8, cornerRadius + 2);
       c.fill();
-      
-      // Inner bright aura
+
       c.globalAlpha = 0.3 * currentGlowInt;
       c.beginPath();
       roundRect(c, x - 1.5, centerY - length - 1.5, barWidth + 3, length * 2 + 3, cornerRadius + 1);
       c.fill();
-      
-      // Reset composite to draw the exact original core bar on top
+
       c.globalCompositeOperation = 'source-over';
       c.globalAlpha = 1.0;
-      
+
       c.fillStyle = gradient;
       c.beginPath();
       roundRect(c, x, centerY - length, barWidth, length * 2, cornerRadius);
@@ -1464,31 +1588,31 @@ function drawBars(c, width, height) {
   c.strokeStyle = isBW
     ? 'rgba(255, 255, 255, 0.16)'
     : spectralLinear(c, 0, centerY, width, centerY, 0.32);
-  c.lineWidth = isBW ? 1 : 1.6; // Undid the baseline width change to retain original design
+  c.lineWidth = isBW ? 1 : 1.6;
   c.beginPath();
   c.moveTo(0, centerY);
   c.lineTo(width, centerY);
   c.stroke();
-  
+
   c.restore();
 }
 
 function getAudioIntensity() {
   if (!state.running || !state.freqData) return 0;
-  
+
   let sum = 0;
   for (let i = 0; i < state.bufferLength; i++) {
     sum += state.freqData[i];
   }
   let avg = sum / state.bufferLength / 255;
-  
+
   let bassSum = 0;
   let bassBins = Math.floor(state.bufferLength * 0.1);
   for(let i=0; i<bassBins; i++){
       bassSum += state.freqData[i];
   }
   let bassAvg = bassSum / bassBins / 255;
-  
+
   return (avg * 0.4 + bassAvg * 0.6) * state.sensitivity;
 }
 
@@ -1499,14 +1623,14 @@ function smoothAmplitude(prev, current) {
 function drawFluidLayer(c, cx, cy, baseRadius, multiplier, color, data, blur) {
   const bins = data.length;
   const points = [];
-  
+
   for (let i = 0; i < bins; i++) {
     const angle = (Math.PI / 2) - (i / (bins - 1)) * Math.PI;
     const amp = Math.pow(data[i], 1.5) * multiplier * state.sensitivity * (1 + (state.bassSmoothed || 0) * 0.8);
     const r = baseRadius + amp;
     points.push({ x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r });
   }
-  
+
   for (let i = bins - 1; i >= 0; i--) {
     const angle = (Math.PI / 2) + (i / (bins - 1)) * Math.PI;
     const amp = Math.pow(data[i], 1.5) * multiplier * state.sensitivity * (1 + (state.bassSmoothed || 0) * 0.8);
@@ -1522,23 +1646,22 @@ function drawFluidLayer(c, cx, cy, baseRadius, multiplier, color, data, blur) {
     c.shadowColor = color;
     c.shadowBlur = blur;
   }
-  
+
   c.beginPath();
   c.moveTo(loopPoints[0].x, loopPoints[0].y);
   drawSmoothPath(c, loopPoints, 0.5);
   c.closePath();
-  
-  // Cut out the inner circle to make it a hollow ring
+
   c.moveTo(cx + baseRadius, cy);
   c.arc(cx, cy, baseRadius, 0, Math.PI * 2, false);
-  
+
   c.fill();
   c.restore();
 }
 
 function drawReactiveBackgroundCircle(c, cx, cy, baseRadius, theme) {
   if (!state.running || !state.freqData) return;
-  
+
   const bins = Math.min(90, state.bufferLength);
   const data = [];
   for (let i = 0; i < bins; i++) {
@@ -1546,19 +1669,19 @@ function drawReactiveBackgroundCircle(c, cx, cy, baseRadius, theme) {
   }
 
   const beatBoost = state.beatActive ? 1.6 : 1.0;
-  const maxAmp = baseRadius * 1.5 * beatBoost; 
-  
+  const maxAmp = baseRadius * 1.5 * beatBoost;
+
   const rgb = getThemeGlowRGB(theme);
   const r = Math.floor(Math.min(255, rgb.r * 1.3 + 40));
   const g = Math.floor(Math.min(255, rgb.g * 1.3 + 40));
   const b = Math.floor(Math.min(255, rgb.b * 1.3 + 40));
-  
+
   const colorInner = `rgba(${Math.min(255, r+30)}, ${Math.min(255, g+30)}, ${Math.min(255, b+30)}, 0.95)`;
   const colorMid = `rgba(${r}, ${g}, ${b}, 0.75)`;
   const colorOuter = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4)`;
-  
+
   const glowMult = state.glowMultiplier || 1;
-  
+
   c.save();
   if (theme.label !== 'BLACK & WHITE') {
     c.globalCompositeOperation = 'screen';
@@ -1577,7 +1700,7 @@ function drawRadial(c, width, height) {
   const cx = width / 2;
   const cy = height / 2;
   const dim = Math.min(width, height);
-  const ringRadius = dim * (theme.road ? 0.18 : 0.22); // slightly larger
+  const ringRadius = dim * (theme.road ? 0.18 : 0.22);
 
   drawReactiveBackgroundCircle(c, cx, cy, ringRadius, theme);
   drawCenterOrb(c, cx, cy, ringRadius * 0.64, theme);
@@ -1586,7 +1709,7 @@ function drawRadial(c, width, height) {
 function drawRadialWave(c, cx, cy, radius, theme) {
   const points = Math.min(state.timeData.length, 512);
   const wavePoints = [];
-  
+
   for (let i = 0; i <= points; i += 1) {
     const sample = state.timeData[i % points] / 128 - 1;
     const angle = (i / points) * Math.PI * 2 - Math.PI / 2 - state.radialAngle * 0.4;
@@ -1619,13 +1742,13 @@ function drawRadialWave(c, cx, cy, radius, theme) {
 
   drawGlowingRing(6, 35 * theme.glowIntensity, 0.5, glowColor);
   drawGlowingRing(3, 15 * theme.glowIntensity, 0.8, baseColor);
-  drawGlowingRing(1.5, 5, 1.0, 'rgba(255, 255, 255, 0.95)'); // Hot white core
+  drawGlowingRing(1.5, 5, 1.0, 'rgba(255, 255, 255, 0.95)');
 }
 
 function drawCenterOrb(c, cx, cy, radius, theme) {
   const isBW = theme.label === 'BLACK & WHITE';
   const glowRadius = radius * (2.4 + state.energySmoothed * 2.0);
-  
+
   const orb = c.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
   if (isBW) {
     orb.addColorStop(0, 'rgba(255, 255, 255, 1)');
@@ -1640,14 +1763,14 @@ function drawCenterOrb(c, cx, cy, radius, theme) {
     const hotCore = `rgba(${hr}, ${hg}, ${hb}, 1)`;
     const midGlow = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.7)`;
     const outerGlow = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`;
-    
+
     orb.addColorStop(0, 'rgba(255, 255, 255, 1)');
     orb.addColorStop(0.12, hotCore);
     orb.addColorStop(0.4, midGlow);
     orb.addColorStop(0.7, outerGlow);
     orb.addColorStop(1, 'rgba(0, 0, 0, 0)');
   }
-  
+
   c.save();
   if (!isBW) {
     c.globalCompositeOperation = 'screen';
@@ -1662,7 +1785,7 @@ function drawCenterOrb(c, cx, cy, radius, theme) {
 function drawWave(c, width, height) {
   const theme = themeConfig();
   const centerY = height * (theme.road ? 0.56 : 0.5);
-  
+
   const samples = Math.min(state.timeData.length, 256);
   const dataStep = state.timeData.length / samples;
   const step = width / (samples - 1);
@@ -1683,7 +1806,7 @@ function drawWave(c, width, height) {
 
   c.save();
   if (!isBW) {
-    c.globalCompositeOperation = 'screen'; // This makes the colors actually bloom!
+    c.globalCompositeOperation = 'screen';
   }
 
   c.beginPath();
@@ -1691,7 +1814,7 @@ function drawWave(c, width, height) {
   drawSmoothPath(c, points, theme.waveformSmoothness);
   c.lineTo(width, centerY);
   c.closePath();
-  
+
   const fill = c.createLinearGradient(0, centerY - ampScale * 1.5, 0, centerY + ampScale * 1.5);
   if (isBW) {
     fill.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
@@ -1721,7 +1844,7 @@ function drawWave(c, width, height) {
 
   drawGlowingLine(theme.lineWidth * 6, 40 * theme.glowIntensity, 0.5, glowColor);
   drawGlowingLine(theme.lineWidth * 3, 20 * theme.glowIntensity, 0.8, baseColor);
-  
+
   if (!isBW) c.globalCompositeOperation = 'lighter';
   drawGlowingLine(theme.lineWidth * 1.2, 5, 1.0, 'rgba(255, 255, 255, 1)');
 
@@ -1736,7 +1859,7 @@ function drawWave(c, width, height) {
     c.shadowBlur = 10;
     c.stroke();
   }
-  
+
   c.restore();
 }
 
@@ -1795,6 +1918,677 @@ function drawParticlesMode(c, width, height) {
   }
 
   drawCenterOrb(c, cx, cy, 32 + state.energySmoothed * 48, theme);
+}
+
+function project3D(p, camera, fov, cx, cy) {
+  if (p.z <= 0.2) return null;
+  const tunnelScale = 1.5;
+  const scale = (fov * tunnelScale) / p.z;
+  return {
+    x: cx + (p.x - camera.x) * scale,
+    y: cy + (p.y - camera.y) * scale,
+    scale: scale,
+    z: p.z
+  };
+}
+
+function createPolygonPoints(radius, sides, twistOffset = 0) {
+  const points = [];
+  for (let i = 0; i < sides; i++) {
+    const angle = (i / sides) * Math.PI * 2 + twistOffset;
+    points.push({
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius,
+      z: 0
+    });
+  }
+  return points;
+}
+
+function createSquarePoints(size, twistOffset = 0) {
+  return createPolygonPoints(size, 4, Math.PI / 4 + twistOffset);
+}
+
+function createCirclePoints(radius, segments = 64, twistOffset = 0) {
+  return createPolygonPoints(radius, segments, twistOffset);
+}
+
+function smoothstep(min, max, value) {
+  const x = Math.max(0, Math.min(1, (value - min) / (max - min)));
+  return x * x * (3 - 2 * x);
+}
+
+function getVortexTemplatePoints(sides = 6, radius = 1) {
+  const cacheKey = `${sides}:${radius}`;
+  const cached = state.vortexGeometryCache.get(cacheKey);
+  if (cached) return cached;
+
+  const points = createPolygonPoints(radius, sides);
+  state.vortexGeometryCache.set(cacheKey, points);
+  return points;
+}
+
+let _projectedIndex = 0;
+const _gateW = 3.2;
+const _gateH = 1.6;
+const _gateVerticesX = new Float32Array([
+  -_gateW,
+  -_gateW * 0.65,
+   _gateW * 0.65,
+   _gateW
+]);
+const _gateVerticesY = new Float32Array([
+   _gateH,
+  -_gateH,
+  -_gateH,
+   _gateH
+]);
+
+const _gateProjOuter = [
+  { x: 0, y: 0, scale: 0, z: 0 }, { x: 0, y: 0, scale: 0, z: 0 },
+  { x: 0, y: 0, scale: 0, z: 0 }, { x: 0, y: 0, scale: 0, z: 0 }
+];
+const _gateProjInner = [
+  { x: 0, y: 0, scale: 0, z: 0 }, { x: 0, y: 0, scale: 0, z: 0 },
+  { x: 0, y: 0, scale: 0, z: 0 }, { x: 0, y: 0, scale: 0, z: 0 }
+];
+const _gateProjReflOuter = [
+  { x: 0, y: 0, scale: 0, z: 0 }, { x: 0, y: 0, scale: 0, z: 0 },
+  { x: 0, y: 0, scale: 0, z: 0 }, { x: 0, y: 0, scale: 0, z: 0 }
+];
+const _gateProjReflInner = [
+  { x: 0, y: 0, scale: 0, z: 0 }, { x: 0, y: 0, scale: 0, z: 0 },
+  { x: 0, y: 0, scale: 0, z: 0 }, { x: 0, y: 0, scale: 0, z: 0 }
+];
+
+function sortGatesDescending(a, b) {
+  return b.z - a.z;
+}
+
+function sortActiveGates(arr, n) {
+  for (let i = 1; i < n; i++) {
+    const key = arr[i];
+    let j = i - 1;
+    while (j >= 0 && arr[j].z < key.z) {
+      arr[j + 1] = arr[j];
+      j = j - 1;
+    }
+    arr[j + 1] = key;
+  }
+}
+
+function ensureProjectedPool() {
+  if (!state.vortexProjectedPool || state.vortexProjectedPool.length < 800) {
+    state.vortexProjectedPool = [];
+    for (let i = 0; i < 800; i++) {
+      state.vortexProjectedPool.push({ x: 0, y: 0, scale: 0, z: 0 });
+    }
+  }
+}
+
+function projectPoint(x, y, z, cx, cy, focalLength, nearClip) {
+  if (z <= nearClip) return null;
+  const pool = state.vortexProjectedPool;
+  if (!pool) return null;
+  if (_projectedIndex >= pool.length) {
+    pool.push({ x: 0, y: 0, scale: 0, z: 0 });
+  }
+  const pt = pool[_projectedIndex++];
+  const scale = focalLength / z;
+  pt.x = cx + x * scale;
+  pt.y = cy + y * scale;
+  pt.scale = scale;
+  pt.z = z;
+  return pt;
+}
+
+function ensureCyberVortexPools(farZ, nearClip) {
+  if (!state.cyberVortexGates || state.cyberVortexGates.length < 7) {
+    state.cyberVortexGates = [];
+    for (let i = 0; i < 7; i++) {
+      state.cyberVortexGates.push({
+        z: nearClip + i * ((farZ - nearClip) / 7),
+        pulse: 0,
+        colorSide: i % 2,
+        seed: Math.random()
+      });
+    }
+  }
+
+  if (!state.cyberVortexParticles || state.cyberVortexParticles.length < 40) {
+    state.cyberVortexParticles = [];
+    for (let i = 0; i < 40; i++) {
+      const particle = { x: 0, y: 0, z: 0, speed: 0, size: 0, colorSide: 0, streak: 0 };
+      resetCyberVortexParticle(particle, farZ, true, nearClip);
+      state.cyberVortexParticles.push(particle);
+    }
+  }
+}
+
+function syncCyberVortexQuality(quality, farZ, nearClip) {
+  if (state.cyberVortexQualityIndex === quality.gates) return;
+  state.cyberVortexQualityIndex = quality.gates;
+  const span = farZ - nearClip;
+  for (let i = 0; i < quality.gates; i++) {
+    const gate = state.cyberVortexGates[i];
+    gate.z = nearClip + (i / quality.gates) * span;
+    gate.pulse = 0;
+    gate.colorSide = i % 2;
+  }
+}
+
+function updateCyberVortexPools(quality, speed, farZ, nearClip, bass, high) {
+  const span = farZ - nearClip;
+  for (let i = 0; i < quality.gates; i++) {
+    const gate = state.cyberVortexGates[i];
+    gate.z -= speed * (1.0 + bass * 0.8);
+    gate.pulse *= 0.85;
+
+    if (state.beatActive && i < 2) {
+      gate.pulse = 1.0;
+    }
+
+    if (gate.z <= nearClip) {
+      gate.z += span;
+      gate.colorSide = 1 - gate.colorSide;
+      gate.pulse = state.beatActive ? 1.0 : 0.0;
+    }
+  }
+
+  const particleSpeed = speed * (2.2 + high * 2.5 + bass * 0.8);
+  for (let i = 0; i < quality.particles; i++) {
+    const particle = state.cyberVortexParticles[i];
+    particle.z -= particleSpeed * particle.speed;
+    if (particle.z <= nearClip) {
+      resetCyberVortexParticle(particle, farZ, false, nearClip);
+    }
+  }
+}
+
+function resetCyberVortexParticle(particle, farZ, scatter, nearClip) {
+  const angle = Math.PI + Math.random() * Math.PI;
+  const radius = 2.0 + Math.random() * 1.5;
+  particle.x = Math.cos(angle) * radius;
+  particle.y = Math.sin(angle) * radius * 0.8;
+  particle.z = scatter ? nearClip + Math.random() * (farZ - nearClip) : farZ;
+  particle.speed = 0.5 + Math.random() * 1.0;
+  particle.size = 1.0 + Math.random() * 2.0;
+  particle.colorSide = Math.random() < 0.5 ? 0 : 1;
+  particle.streak = 0.15 + Math.random() * 0.25;
+}
+
+function getVortexBandEnergy(startBin, endBin) {
+  if (!state.freqData || !state.bufferLength) return 0;
+  const start = Math.min(state.bufferLength - 1, startBin);
+  const end = Math.min(state.bufferLength, endBin);
+  let sum = 0;
+  let count = 0;
+  for (let i = start; i < end; i += 1) {
+    sum += state.freqData[i];
+    count += 1;
+  }
+  return count ? clamp((sum / count / 255) * state.sensitivity * 1.25, 0, 1.35) : 0;
+}
+
+function cyberAlpha(color, alpha) {
+  if (color.charAt(0) === '#') {
+    const rgb = hexToRgb(color);
+    return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+  }
+  if (color.startsWith('hsl')) {
+    const h = color.match(/hsl\(([^)]+)\)/);
+    if (h) {
+      const parts = h[1].split(',');
+      return `hsla(${parts[0].trim()},${parts[1].trim()},${parts[2].trim()},${alpha})`;
+    }
+  }
+  const start = color.indexOf('(');
+  const end = color.indexOf(')');
+  if (start == -1 || end == -1) return color;
+  const parts = color.slice(start + 1, end).split(',');
+  return `rgba(${parts[0].trim()},${parts[1].trim()},${parts[2].trim()},${alpha})`;
+}
+
+function getVortexPremiumColors() {
+  if (state.autoCycle) {
+    return {
+      primary: `hsl(${state.colorHue}, 100%, 65%)`,
+      hotPink: `hsl(${(state.colorHue + 330) % 360}, 100%, 65%)`,
+      secondary: `hsl(${(state.colorHue + 180) % 360}, 100%, 62%)`,
+      accent: `hsl(${(state.colorHue + 270) % 360}, 100%, 68%)`,
+      bg: '#03040c'
+    };
+  }
+
+  const theme = themeConfig();
+  if (theme && theme.palette && theme.palette.length >= 3) {
+    return {
+      primary: theme.palette[0],
+      hotPink: theme.palette[0],
+      secondary: theme.palette[1],
+      accent: theme.palette[2],
+      bg: theme.background ? theme.background[0] : '#03040c'
+    };
+  }
+
+  return {
+    primary: '#ff2dff',
+    hotPink: '#ff008c',
+    secondary: '#00d9ff',
+    accent: '#8a2bff',
+    bg: '#03040c'
+  };
+}
+
+function drawNeonLine(c, p0, p1, color, size, alpha) {
+  if (!p0 || !p1 || alpha < 0.01) return;
+  c.save();
+  c.globalCompositeOperation = 'screen';
+  c.beginPath();
+  c.moveTo(p0.x, p0.y);
+  c.lineTo(p1.x, p1.y);
+
+  c.strokeStyle = color;
+  c.lineWidth = size * 10;
+  c.globalAlpha = alpha * 0.25;
+  c.stroke();
+
+  c.lineWidth = size * 3;
+  c.globalAlpha = alpha * 0.7;
+  c.stroke();
+
+  c.strokeStyle = '#ffffff';
+  c.lineWidth = size * 0.8;
+  c.globalAlpha = Math.min(1.0, alpha * 0.9);
+  c.stroke();
+  c.restore();
+}
+
+function drawGateSegment(c, p0, p1, innerP0, innerP1, colorMain, colorHighlight, size, glow, alpha) {
+  if (alpha < 0.01) return;
+  c.save();
+  c.globalCompositeOperation = 'screen';
+  
+  // Outer glow
+  c.beginPath(); c.moveTo(p0.x, p0.y); c.lineTo(p1.x, p1.y);
+  c.strokeStyle = glow;
+  c.lineWidth = size * 16;
+  c.globalAlpha = alpha * 0.3;
+  c.stroke();
+  
+  // Main thick bar
+  c.lineWidth = size * 6;
+  c.strokeStyle = colorMain;
+  c.globalAlpha = alpha * 0.9;
+  c.stroke();
+  
+  // Bright core
+  c.lineWidth = size * 2;
+  c.strokeStyle = '#ffffff';
+  c.globalAlpha = alpha;
+  c.stroke();
+  
+  // Inner cyan highlight
+  c.beginPath(); c.moveTo(innerP0.x, innerP0.y); c.lineTo(innerP1.x, innerP1.y);
+  c.strokeStyle = colorHighlight;
+  c.lineWidth = size * 1.5;
+  c.globalAlpha = alpha * 0.8;
+  c.stroke();
+  
+  c.restore();
+}
+
+function projectGate(gate, pulse, camX, camY, cx, cy, focalLength, nearClip) {
+  const z = gate.z;
+  const outerScale = 1.0 + pulse * 0.05;
+  const innerScale = 0.85 + pulse * 0.05;
+
+  for (let j = 0; j < 4; j++) {
+    const ox = _gateVerticesX[j] * outerScale;
+    const oy = _gateVerticesY[j] * outerScale;
+    const pOuter = projectPoint(ox - camX, oy - camY, z, cx, cy, focalLength, nearClip);
+    if (pOuter) {
+      _gateProjOuter[j].x = pOuter.x;
+      _gateProjOuter[j].y = pOuter.y;
+      _gateProjOuter[j].scale = pOuter.scale;
+    }
+
+    const ix = _gateVerticesX[j] * innerScale;
+    const iy = _gateVerticesY[j] * innerScale;
+    const pInner = projectPoint(ix - camX, iy - camY, z, cx, cy, focalLength, nearClip);
+    if (pInner) {
+      _gateProjInner[j].x = pInner.x;
+      _gateProjInner[j].y = pInner.y;
+      _gateProjInner[j].scale = pInner.scale;
+    }
+
+    const floorY = _gateH;
+    const reflOy = floorY + (floorY - oy);
+    const pReflOuter = projectPoint(ox - camX, reflOy - camY, z, cx, cy, focalLength, nearClip);
+    if (pReflOuter) {
+      _gateProjReflOuter[j].x = pReflOuter.x;
+      _gateProjReflOuter[j].y = pReflOuter.y;
+      _gateProjReflOuter[j].scale = pReflOuter.scale;
+    }
+
+    const reflIy = floorY + (floorY - iy);
+    const pReflInner = projectPoint(ix - camX, reflIy - camY, z, cx, cy, focalLength, nearClip);
+    if (pReflInner) {
+      _gateProjReflInner[j].x = pReflInner.x;
+      _gateProjReflInner[j].y = pReflInner.y;
+      _gateProjReflInner[j].scale = pReflInner.scale;
+    }
+  }
+}
+
+function drawCorridorSurfaces(c, z0, z1, fog, isAlt, colors, glowBoost, camX, camY, cx, cy, focalLength, nearClip) {
+  const w = _gateW; 
+  const h = _gateH; 
+
+  const fw = 50.0;
+  const fh = 50.0;
+
+  const fL0 = projectPoint(-fw - camX, h - camY, z0, cx, cy, focalLength, nearClip);
+  const fR0 = projectPoint(fw - camX, h - camY, z0, cx, cy, focalLength, nearClip);
+  const fL1 = projectPoint(-fw - camX, h - camY, z1, cx, cy, focalLength, nearClip);
+  const fR1 = projectPoint(fw - camX, h - camY, z1, cx, cy, focalLength, nearClip);
+
+  const cL0 = projectPoint(-fw - camX, -h - camY, z0, cx, cy, focalLength, nearClip);
+  const cR0 = projectPoint(fw - camX, -h - camY, z0, cx, cy, focalLength, nearClip);
+  const cL1 = projectPoint(-fw - camX, -h - camY, z1, cx, cy, focalLength, nearClip);
+  const cR1 = projectPoint(fw - camX, -h - camY, z1, cx, cy, focalLength, nearClip);
+
+  const slope = (w * 0.35) / (2 * h); 
+  const getWallX = (y) => -w + (h - y) * slope;
+  
+  const wLT0 = projectPoint(getWallX(-fh) - camX, -fh - camY, z0, cx, cy, focalLength, nearClip);
+  const wLB0 = projectPoint(getWallX(fh) - camX, fh - camY, z0, cx, cy, focalLength, nearClip);
+  const wLT1 = projectPoint(getWallX(-fh) - camX, -fh - camY, z1, cx, cy, focalLength, nearClip);
+  const wLB1 = projectPoint(getWallX(fh) - camX, fh - camY, z1, cx, cy, focalLength, nearClip);
+
+  const getWallXR = (y) => w - (h - y) * slope;
+  const wRT0 = projectPoint(getWallXR(-fh) - camX, -fh - camY, z0, cx, cy, focalLength, nearClip);
+  const wRB0 = projectPoint(getWallXR(fh) - camX, fh - camY, z0, cx, cy, focalLength, nearClip);
+  const wRT1 = projectPoint(getWallXR(-fh) - camX, -fh - camY, z1, cx, cy, focalLength, nearClip);
+  const wRB1 = projectPoint(getWallXR(fh) - camX, fh - camY, z1, cx, cy, focalLength, nearClip);
+
+  c.save();
+
+  if (fL0 && fR0 && fL1 && fR1) {
+    c.fillStyle = isAlt ? `rgba(4, 5, 8, ${1.0 * fog})` : `rgba(2, 2, 4, ${1.0 * fog})`;
+    c.beginPath(); c.moveTo(fL0.x, fL0.y); c.lineTo(fR0.x, fR0.y); c.lineTo(fR1.x, fR1.y); c.lineTo(fL1.x, fL1.y); c.fill();
+  }
+  if (cL0 && cR0 && cL1 && cR1) {
+    c.fillStyle = isAlt ? `rgba(8, 9, 14, ${0.98 * fog})` : `rgba(5, 6, 10, ${0.98 * fog})`;
+    c.beginPath(); c.moveTo(cL0.x, cL0.y); c.lineTo(cR0.x, cR0.y); c.lineTo(cR1.x, cR1.y); c.lineTo(cL1.x, cL1.y); c.fill();
+  }
+  if (wLT0 && wLB0 && wLT1 && wLB1) {
+    c.fillStyle = isAlt ? `rgba(12, 14, 20, ${0.95 * fog})` : `rgba(7, 8, 12, ${0.95 * fog})`;
+    c.beginPath(); c.moveTo(wLT0.x, wLT0.y); c.lineTo(wLB0.x, wLB0.y); c.lineTo(wLB1.x, wLB1.y); c.lineTo(wLT1.x, wLT1.y); c.fill();
+  }
+  if (wRT0 && wRB0 && wRT1 && wRB1) {
+    c.fillStyle = isAlt ? `rgba(10, 11, 16, ${0.95 * fog})` : `rgba(6, 7, 10, ${0.95 * fog})`;
+    c.beginPath(); c.moveTo(wRT0.x, wRT0.y); c.lineTo(wRB0.x, wRB0.y); c.lineTo(wRB1.x, wRB1.y); c.lineTo(wRT1.x, wRT1.y); c.fill();
+  }
+
+  // Floor Perspective Grid
+  const floorCols = [-w*0.8, -w*0.4, 0, w*0.4, w*0.8];
+  for (let i = 0; i < floorCols.length; i++) {
+    const col = floorCols[i];
+    const pl0 = projectPoint(col - camX, h - camY, z0, cx, cy, focalLength, nearClip);
+    const pl1 = projectPoint(col - camX, h - camY, z1, cx, cy, focalLength, nearClip);
+    if (pl0 && pl1) {
+      drawNeonLine(c, pl0, pl1, i % 2 === 0 ? colors.primary : colors.secondary, fL0.scale * 0.003, fog * glowBoost);
+    }
+  }
+
+  // Horizontal Floor Strips
+  if (isAlt) {
+     const plL = projectPoint(-w - camX, h - camY, z0, cx, cy, focalLength, nearClip);
+     const plR = projectPoint(w - camX, h - camY, z0, cx, cy, focalLength, nearClip);
+     if (plL && plR) drawNeonLine(c, plL, plR, colors.primary, plL.scale * 0.004, fog * glowBoost * 1.2);
+  }
+
+  // Ceiling bright cyan long light bars
+  const ceilCols = [-w*0.5, 0, w*0.5];
+  for (let i = 0; i < ceilCols.length; i++) {
+    const col = ceilCols[i];
+    const cl0 = projectPoint(col - camX, -h - camY, z0, cx, cy, focalLength, nearClip);
+    const cl1 = projectPoint(col - camX, -h - camY, z1, cx, cy, focalLength, nearClip);
+    if (cl0 && cl1) {
+      drawNeonLine(c, cl0, cl1, colors.secondary, fL0.scale * 0.004, fog * glowBoost * 1.2); 
+    }
+  }
+
+  // Magenta rectangular ceiling frames
+  if (!isAlt) { 
+     const clL = projectPoint(-w*0.65 - camX, -h - camY, z0, cx, cy, focalLength, nearClip);
+     const clR = projectPoint(w*0.65 - camX, -h - camY, z0, cx, cy, focalLength, nearClip);
+     if (clL && clR) drawNeonLine(c, clL, clR, colors.primary, clL.scale * 0.003, fog * glowBoost);
+  }
+
+  // Wall horizontal cyan strips
+  const wallY = 0;
+  const wL0 = projectPoint(getWallX(wallY) - camX, wallY - camY, z0, cx, cy, focalLength, nearClip);
+  const wL1 = projectPoint(getWallX(wallY) - camX, wallY - camY, z1, cx, cy, focalLength, nearClip);
+  const wR0 = projectPoint(getWallXR(wallY) - camX, wallY - camY, z0, cx, cy, focalLength, nearClip);
+  const wR1 = projectPoint(getWallXR(wallY) - camX, wallY - camY, z1, cx, cy, focalLength, nearClip);
+  if (wL0 && wL1) drawNeonLine(c, wL0, wL1, colors.secondary, fL0.scale * 0.003, fog * glowBoost);
+  if (wR0 && wR1) drawNeonLine(c, wR0, wR1, colors.secondary, fL0.scale * 0.003, fog * glowBoost);
+
+  // Wall details
+  if (isAlt) {
+      const wlT = projectPoint(getWallX(-h) - camX, -h - camY, z0, cx, cy, focalLength, nearClip);
+      const wlB = projectPoint(getWallX(h) - camX, h - camY, z0, cx, cy, focalLength, nearClip);
+      if (wlT && wlB) drawNeonLine(c, wlT, wlB, colors.primary, wlT.scale * 0.004, fog * glowBoost * 1.2);
+      const wrT = projectPoint(getWallXR(-h) - camX, -h - camY, z0, cx, cy, focalLength, nearClip);
+      const wrB = projectPoint(getWallXR(h) - camX, h - camY, z0, cx, cy, focalLength, nearClip);
+      if (wrT && wrB) drawNeonLine(c, wrT, wrB, colors.primary, wrT.scale * 0.004, fog * glowBoost * 1.2);
+  } else {
+      const wlT = projectPoint(getWallX(-h) - camX, -h - camY, z0, cx, cy, focalLength, nearClip);
+      const wlB1 = projectPoint(getWallX(h) - camX, h - camY, z1, cx, cy, focalLength, nearClip);
+      if (wlT && wlB1) drawNeonLine(c, wlT, wlB1, colors.accent, wlT.scale * 0.002, fog * glowBoost);
+      const wrT = projectPoint(getWallXR(-h) - camX, -h - camY, z0, cx, cy, focalLength, nearClip);
+      const wrB1 = projectPoint(getWallXR(h) - camX, h - camY, z1, cx, cy, focalLength, nearClip);
+      if (wrT && wrB1) drawNeonLine(c, wrT, wrB1, colors.accent, wrT.scale * 0.002, fog * glowBoost);
+  }
+
+  c.restore();
+}
+
+function drawFloorReflections(c, fog, colors, glowBoost, camX, camY, cx, cy, focalLength, nearClip) {
+  const alpha = glowBoost * fog * 0.7;
+  if (alpha < 0.01) return;
+
+  c.save();
+  c.globalCompositeOperation = 'screen';
+  
+  const size = Math.max(0.5, _gateProjReflOuter[0].scale * 0.0025);
+
+  drawNeonLine(c, _gateProjReflOuter[0], _gateProjReflOuter[1], colors.primary, size, alpha * 0.5);
+  drawNeonLine(c, _gateProjReflOuter[1], _gateProjReflOuter[2], colors.hotPink, size, alpha * 0.5);
+  drawNeonLine(c, _gateProjReflOuter[2], _gateProjReflOuter[3], colors.primary, size, alpha * 0.5);
+  
+  c.beginPath();
+  c.moveTo(_gateProjReflOuter[0].x, _gateProjReflOuter[0].y);
+  c.lineTo(_gateProjReflOuter[1].x, _gateProjReflOuter[1].y);
+  c.lineTo(_gateProjReflOuter[2].x, _gateProjReflOuter[2].y);
+  c.lineTo(_gateProjReflOuter[3].x, _gateProjReflOuter[3].y);
+  c.fillStyle = `rgba(10, 20, 35, ${alpha * 0.1})`;
+  c.fill();
+  
+  c.restore();
+}
+
+function drawGateStructure(c, fog) {
+  c.save();
+  c.fillStyle = `rgba(2, 2, 4, ${0.98 * fog})`;
+  c.beginPath();
+  c.moveTo(_gateProjOuter[0].x, _gateProjOuter[0].y);
+  c.lineTo(_gateProjOuter[1].x, _gateProjOuter[1].y);
+  c.lineTo(_gateProjOuter[2].x, _gateProjOuter[2].y);
+  c.lineTo(_gateProjOuter[3].x, _gateProjOuter[3].y);
+  
+  c.lineTo(_gateProjInner[3].x, _gateProjInner[3].y);
+  c.lineTo(_gateProjInner[2].x, _gateProjInner[2].y);
+  c.lineTo(_gateProjInner[1].x, _gateProjInner[1].y);
+  c.lineTo(_gateProjInner[0].x, _gateProjInner[0].y);
+  
+  c.closePath();
+  c.fill();
+  c.restore();
+}
+
+function drawVortex(c, width, height) {
+  if (state.threeVortexSupported) {
+    if (!state.threeVortexInitialized) {
+      initThreeVortex();
+    }
+    c.clearRect(0, 0, width, height);
+    if (state.threeVortexInitialized === true) {
+      renderThreeVortex();
+    }
+    return;
+  }
+
+  const now = performance.now();
+  if (state.cyberVortexLastTime === undefined) state.cyberVortexLastTime = now;
+  if (state.cyberVortexTravel === undefined) state.cyberVortexTravel = 0;
+  if (state.vortexBeatGlow === undefined) state.vortexBeatGlow = 0;
+
+  const dt = Math.min(now - state.cyberVortexLastTime, 34);
+  state.cyberVortexLastTime = now;
+
+  const minDim = Math.min(width, height);
+  const cx = width * 0.5;
+  const cy = height * 0.58; 
+  const focalLength = minDim * 0.65;
+  const nearClip = 0.18;
+  const farZ = 16.0;
+
+  const energy = clamp(state.energySmoothed || 0, 0, 1);
+  const bass = state.bassMode ? clamp(state.bassSmoothed || 0, 0, 1.2) : 0;
+  const high = getVortexBandEnergy(96, 240);
+
+  const qualityName = state.vortexQuality === 'high' ? 'high' : (state.vortexQuality === 'medium' ? 'medium' : 'low');
+  const quality = qualityName === 'high'
+    ? { gates: 7, particles: 40 }
+    : qualityName === 'medium'
+      ? { gates: 6, particles: 30 }
+      : { gates: 5, particles: 20 };
+
+  ensureCyberVortexPools(farZ, nearClip);
+  syncCyberVortexQuality(quality, farZ, nearClip);
+
+  const speed = dt * (0.0028 + (state.bassMode ? energy * 0.0035 + bass * 0.015 : energy * 0.005));
+  state.cyberVortexTravel += speed;
+  
+  state.vortexBeatGlow = state.vortexBeatGlow || 0;
+  if (state.beatActive) {
+    state.vortexBeatGlow = 1;
+  }
+  state.vortexBeatGlow *= 0.88;
+
+  const bassPulse = state.bassMode
+    ? Math.min(1, (state.bassSmoothed || 0) * 2.8)
+    : 0;
+
+  const glowBoost = 1 + state.vortexBeatGlow * 1.8 + bassPulse * 1.2;
+
+  updateCyberVortexPools(quality, speed, farZ, nearClip, bass, high);
+  sortActiveGates(state.cyberVortexGates, quality.gates);
+
+  ensureProjectedPool();
+  _projectedIndex = 0;
+
+  const camX = Math.sin(state.cyberVortexTravel * 0.15) * 0.05;
+  const camY = Math.cos(state.cyberVortexTravel * 0.10) * 0.03;
+
+  c.save();
+  c.clearRect(0, 0, width, height);
+
+  const colors = getVortexPremiumColors();
+  
+  c.fillStyle = colors.bg;
+  c.fillRect(0, 0, width, height);
+
+  const fogGrad = c.createRadialGradient(cx, cy, 0, cx, cy, Math.max(width, height) * 0.45);
+  fogGrad.addColorStop(0, cyberAlpha(colors.secondary, 0.25 + glowBoost * 0.15));
+  fogGrad.addColorStop(0.35, cyberAlpha(colors.primary, 0.1 + glowBoost * 0.1));
+  fogGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = fogGrad;
+  c.fillRect(0, 0, width, height);
+
+  for (let i = 0; i < quality.gates; i++) {
+    const gate = state.cyberVortexGates[i];
+    const z0 = gate.z;
+    const z1 = (i === quality.gates - 1) ? nearClip : state.cyberVortexGates[i+1].z;
+
+    const depthAlpha = clamp(1.0 - z0 / farZ, 0.0, 1.0);
+    const fog = Math.pow(depthAlpha, 1.5);
+
+    const pulse = gate.pulse;
+
+    projectGate(gate, pulse, camX, camY, cx, cy, focalLength, nearClip);
+
+    drawCorridorSurfaces(c, z0, z1, fog, gate.colorSide === 0, colors, glowBoost, camX, camY, cx, cy, focalLength, nearClip);
+    drawFloorReflections(c, fog, colors, glowBoost, camX, camY, cx, cy, focalLength, nearClip);
+
+    drawGateStructure(c, fog);
+    
+    const size = Math.max(1, _gateProjOuter[0].scale * 0.0035);
+    drawGateSegment(c, _gateProjOuter[0], _gateProjOuter[1], _gateProjInner[0], _gateProjInner[1], colors.primary, colors.secondary, size, colors.accent, fog * glowBoost);
+    drawGateSegment(c, _gateProjOuter[1], _gateProjOuter[2], _gateProjInner[1], _gateProjInner[2], colors.hotPink, colors.secondary, size, colors.accent, fog * glowBoost);
+    drawGateSegment(c, _gateProjOuter[2], _gateProjOuter[3], _gateProjInner[2], _gateProjInner[3], colors.primary, colors.secondary, size, colors.accent, fog * glowBoost);
+
+    c.save();
+    c.globalCompositeOperation = 'screen';
+    for (let pIdx = 0; pIdx < quality.particles; pIdx++) {
+      const particle = state.cyberVortexParticles[pIdx];
+      const isInside = (i === 0 && particle.z >= z0) || (particle.z <= z0 && particle.z > z1);
+      if (isInside) {
+        const head = projectPoint(particle.x - camX, particle.y - camY, particle.z, cx, cy, focalLength, nearClip);
+        const tail = projectPoint(particle.x - camX, particle.y - camY, particle.z + particle.streak + high * 0.3, cx, cy, focalLength, nearClip);
+        if (head && tail) {
+          const pFog = clamp(1.0 - particle.z / farZ, 0.0, 1.0);
+          const pAlpha = pFog * pFog * (0.3 + high * 0.7 + state.vortexBeatGlow * 0.4);
+          const pColor = particle.colorSide === 0 ? colors.secondary : colors.primary;
+          c.strokeStyle = pColor;
+          c.lineWidth = Math.max(0.6, particle.size * head.scale * 0.003);
+          c.beginPath();
+          c.moveTo(tail.x, tail.y);
+          c.lineTo(head.x, head.y);
+          c.stroke();
+        }
+      }
+    }
+    c.restore();
+  }
+
+  const nebulaRadius = minDim * clamp(0.045 + glowBoost * 0.05, 0.035, 0.095);
+  const coreGlow = c.createRadialGradient(cx, cy, 0, cx, cy, nebulaRadius);
+  coreGlow.addColorStop(0, `rgba(235,250,255,${0.9 + state.vortexBeatGlow * 0.1})`);
+  coreGlow.addColorStop(0.3, cyberAlpha(colors.secondary, 0.5 + glowBoost * 0.3));
+  coreGlow.addColorStop(0.75, cyberAlpha(colors.primary, 0.15 + state.vortexBeatGlow * 0.15));
+  coreGlow.addColorStop(1, 'rgba(0,0,0,0)');
+  c.save();
+  c.globalCompositeOperation = 'screen';
+  c.fillStyle = coreGlow;
+  c.beginPath();
+  c.arc(cx, cy, nebulaRadius, 0, Math.PI * 2);
+  c.fill();
+  c.restore();
+
+  const vignette = c.createRadialGradient(cx, cy, minDim * 0.35, cx, cy, Math.max(width, height) * 0.72);
+  vignette.addColorStop(0, 'rgba(0,0,0,0)');
+  vignette.addColorStop(0.55, 'rgba(0,0,0,0.25)');
+  vignette.addColorStop(1, 'rgba(0,0,0,0.95)');
+  c.save();
+  c.fillStyle = vignette;
+  c.fillRect(0, 0, width, height);
+  c.restore();
+
+  c.restore();
 }
 
 function drawThemeForeground(c, width, height) {
@@ -1990,37 +2784,60 @@ function drawCar(c, x, y, scale) {
 function renderPip(ctxToRender, width, height) {
   ctxToRender.clearRect(0, 0, width, height);
 
-  // 1. Draw Background (Media or Color)
-  if (state.theme === 'chill' || state.theme === 'study' || (state.theme === 'custom' && state.customBgMediaType === 'video')) {
-    if (themeVideo && themeVideo.readyState >= 2 && !themeVideo.paused) {
-      drawImageCover(ctxToRender, themeVideo, width, height);
-    }
-  } else if (state.theme === 'phonk' && themeImage && themeImage.complete) {
-    drawImageCover(ctxToRender, themeImage, width, height);
-  } else if (state.currentBgImg && state.currentBgImg.complete) {
-    drawImageCover(ctxToRender, state.currentBgImg, width, height);
-  } else {
-    const theme = THEMES[state.theme] || THEMES.default;
-    ctxToRender.fillStyle = theme.background[0] || '#000';
-    ctxToRender.fillRect(0, 0, width, height);
-  }
+  const isMilkdrop = state.mode === 'milkdrop';
+  const isVortex   = state.mode === 'vortex';
 
-  // 2. Draw MilkDrop (if active)
-  if (state.mode === 'milkdrop') {
+  // 1. Draw Background
+  if (isVortex) {
+    if (state.showBgFx && state.visualizer) {
+      const bcCanvas = document.getElementById('butterchurn-canvas');
+      if (bcCanvas) {
+        ctxToRender.save();
+        if (bcCanvas.style.filter && bcCanvas.style.filter !== 'none') {
+          ctxToRender.filter = bcCanvas.style.filter;
+        }
+        drawImageCover(ctxToRender, bcCanvas, width, height);
+        ctxToRender.restore();
+      }
+      // Draw the same black overlay to dim Milkdrop backdrop and make the vortex pop
+      ctxToRender.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctxToRender.fillRect(0, 0, width, height);
+    } else {
+      ctxToRender.fillStyle = '#000';
+      ctxToRender.fillRect(0, 0, width, height);
+    }
+  } else if (isMilkdrop) {
     const bcCanvas = document.getElementById('butterchurn-canvas');
     if (bcCanvas) {
       ctxToRender.save();
-      // Apply the same filters (hue-rotate, saturate) to the PiP/Mini view
       if (bcCanvas.style.filter && bcCanvas.style.filter !== 'none') {
         ctxToRender.filter = bcCanvas.style.filter;
       }
       drawImageCover(ctxToRender, bcCanvas, width, height);
       ctxToRender.restore();
     }
+  } else {
+    if (state.theme === 'chill' || state.theme === 'study' || (state.theme === 'custom' && state.customBgMediaType === 'video')) {
+      if (themeVideo && themeVideo.readyState >= 2 && !themeVideo.paused) {
+        drawImageCover(ctxToRender, themeVideo, width, height);
+      }
+    } else if (state.theme === 'phonk' && themeImage && themeImage.complete) {
+      drawImageCover(ctxToRender, themeImage, width, height);
+    } else if (state.currentBgImg && state.currentBgImg.complete) {
+      drawImageCover(ctxToRender, state.currentBgImg, width, height);
+    } else {
+      const theme = THEMES[state.theme] || THEMES.default;
+      ctxToRender.fillStyle = theme.background[0] || '#000';
+      ctxToRender.fillRect(0, 0, width, height);
+    }
   }
 
-  // 3. Draw standard layers (empty in milkdrop mode due to optimization)
-  drawImageCover(ctxToRender, bgCanvas, width, height);
+  // 2. Draw standard layers
+  if (!isVortex && !isMilkdrop) {
+    drawImageCover(ctxToRender, bgCanvas, width, height);
+  }
+
+  // Draw the main visualizer canvas (where vortex geometric rings / neon strokes are rendered)
   drawImageCover(ctxToRender, canvas, width, height);
 }
 
@@ -2163,7 +2980,7 @@ async function requestPip(isAuto = false) {
         width: 400,
         height: 280
       });
-      
+
       pipWindow.document.body.innerHTML = `
         <style>
           :root { --bg: #000; --panel: #111; --text: #fff; --acc1: #5f9cff; --border: #444; }
@@ -2190,6 +3007,7 @@ async function requestPip(isAuto = false) {
             <option value="bars" ${state.mode === 'bars' ? 'selected' : ''}>MODE: BARS</option>
             <option value="circle" ${state.mode === 'circle' ? 'selected' : ''}>MODE: RADIAL</option>
             <option value="wave" ${state.mode === 'wave' ? 'selected' : ''}>MODE: WAVE</option>
+            <option value="vortex" ${state.mode === 'vortex' ? 'selected' : ''}>MODE: VORTEX</option>
             <option value="milkdrop" ${state.mode === 'milkdrop' ? 'selected' : ''}>MODE: MILKDROP</option>
           </select>
           <select id="pip-theme">
@@ -2208,14 +3026,14 @@ async function requestPip(isAuto = false) {
           </div>
         </div>
       `;
-      
+
       const pipCanvas = pipWindow.document.getElementById('pip-canvas');
       const pipCtx = pipCanvas.getContext('2d');
       state.pipWindow = pipWindow;
       state.pipCtx = pipCtx;
       state.pipCanvas = pipCanvas;
       syncPipColors();
-      
+
       const resizePip = () => {
         const container = pipWindow.document.getElementById('canvas-container');
         if (container && pipCanvas) {
@@ -2225,12 +3043,12 @@ async function requestPip(isAuto = false) {
       };
       pipWindow.addEventListener('resize', resizePip);
       setTimeout(resizePip, 0);
-      
+
       pipWindow.document.getElementById('pip-pause').addEventListener('click', (e) => {
         btnPause.click();
         e.target.textContent = state.paused ? 'PLAY' : 'PAUSE';
       });
-      
+
       pipWindow.document.getElementById('pip-bass').addEventListener('click', (e) => {
         const tb = document.getElementById('toggle-bass');
         if (tb) {
@@ -2239,7 +3057,7 @@ async function requestPip(isAuto = false) {
           e.target.textContent = tb.checked ? 'BASS: ON' : 'BASS: OFF';
         }
       });
-      
+
       pipWindow.document.getElementById('pip-autocolor').addEventListener('click', (e) => {
         const ta = document.getElementById('toggle-autocycle');
         if (ta) {
@@ -2266,19 +3084,19 @@ async function requestPip(isAuto = false) {
       pipWindow.document.getElementById('pip-controls').addEventListener('change', resetPipControls);
       resetPipControls();
 
-      
+
       pipWindow.document.getElementById('pip-mode').addEventListener('change', (e) => {
         const newMode = e.target.value;
         const modeBtn = document.querySelector(`.mode-btn[data-mode="${newMode}"]`);
         if (modeBtn) modeBtn.click();
       });
-      
+
       pipWindow.document.getElementById('pip-theme').addEventListener('change', (e) => {
         const newTheme = e.target.value;
         const themeBtn = document.querySelector(`.theme-btn[data-theme="${newTheme}"]`);
         if (themeBtn) themeBtn.click();
       });
-      
+
       pipWindow.document.getElementById('pip-sens').addEventListener('input', (e) => {
         state.sensitivity = parseFloat(e.target.value);
         const mainSlider = document.getElementById('sensitivity-slider');
@@ -2286,7 +3104,7 @@ async function requestPip(isAuto = false) {
         if (mainSlider) mainSlider.value = state.sensitivity;
         if (mainVal) mainVal.textContent = state.sensitivity.toFixed(1);
       });
-      
+
       pipWindow.addEventListener('pagehide', () => {
         state.pipWindow = null;
         state.pipCtx = null;
@@ -2322,7 +3140,7 @@ function applyTheme(themeName, silent = false) {
   const theme = themeConfig();
   state.beatCooldownMax = theme.beatCooldownMax;
   document.body.dataset.theme = nextTheme;
-  
+
   if (nextTheme !== 'custom') {
     document.body.style.removeProperty('--acc1');
     document.body.style.removeProperty('--glow');
@@ -2351,7 +3169,7 @@ function applyTheme(themeName, silent = false) {
     rock: 'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?q=80&w=1920&auto=format&fit=crop',
     memory: 'memory_bg.jpg'
   };
-  
+
   if (themeBgUrls[nextTheme]) {
     if (!state.bgImageCache[nextTheme]) {
       const img = new Image();
@@ -2369,7 +3187,7 @@ function applyTheme(themeName, silent = false) {
   } else {
     state.currentBgImg = null;
   }
-  
+
   if (themeBg) {
     if (nextTheme === 'custom' && state.customBgMediaUrl && state.customBgMediaType === 'image') {
        themeBg.style.backgroundImage = `url("${state.customBgMediaUrl}")`;
@@ -2385,7 +3203,7 @@ function applyTheme(themeName, silent = false) {
   if (themeImage) {
     themeImage.classList.add('hidden');
   }
-  
+
   if (nextTheme === 'chill') {
     const chillVideos = [
       'vecteezy_cars-parked-on-a-hillside-with-a-90-s-inspired-night-sky-a_49887896.mp4'
@@ -2419,7 +3237,7 @@ function applyTheme(themeName, silent = false) {
   themeButtons.forEach((button) => {
     button.classList.toggle('active', button.dataset.theme === nextTheme);
   });
-  
+
   if (state.pipWindow) {
     const pipThemeSel = state.pipWindow.document.getElementById('pip-theme');
     if (pipThemeSel) pipThemeSel.value = nextTheme;
@@ -2438,7 +3256,12 @@ function applyTheme(themeName, silent = false) {
   beatFlash.style.background = theme.label === 'BLACK & WHITE'
     ? 'radial-gradient(circle at center, rgba(255,255,255,0.14) 0%, transparent 60%)'
     : `radial-gradient(circle at center, ${paletteColor(0.18, 0.2)} 0%, transparent 60%)`;
+  updateModeVisibility();
   syncPipColors();
+  
+  if (state.mode === 'vortex' && typeof updateThreeVortexColors === 'function') {
+    updateThreeVortexColors();
+  }
 }
 
 function roundRect(c, x, y, width, height, radius) {
@@ -2546,7 +3369,7 @@ function buildIdleScreen() {
 function handleUi() {
   const introScreen = document.getElementById('intro-screen');
   const btnEnter = document.getElementById('btn-enter');
-  
+
   if (btnEnter && introScreen) {
     btnEnter.addEventListener('click', () => {
       introScreen.classList.add('hidden');
@@ -2571,15 +3394,15 @@ function handleUi() {
     customBgUpload.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      
+
       if (state.customBgMediaUrl) {
         URL.revokeObjectURL(state.customBgMediaUrl);
       }
-      
+
       const url = URL.createObjectURL(file);
       state.customBgMediaUrl = url;
       state.customBgMediaType = file.type.startsWith('video') ? 'video' : 'image';
-      
+
       if (state.customBgMediaType === 'video') {
         const tempVid = document.createElement('video');
         tempVid.src = url;
@@ -2678,7 +3501,7 @@ function handleUi() {
   btnPause.addEventListener('click', () => {
     state.paused = !state.paused;
     btnPause.textContent = state.paused ? 'PLAY' : 'PAUSE';
-    
+
     if (state.pipWindow) {
       const pipPauseBtn = state.pipWindow.document.getElementById('pip-pause');
       if (pipPauseBtn) pipPauseBtn.textContent = state.paused ? 'PLAY' : 'PAUSE';
@@ -2769,7 +3592,13 @@ function handleUi() {
       state.mode = button.dataset.mode;
       modeButtons.forEach((item) => item.classList.remove('active'));
       button.classList.add('active');
-      
+      if (state.mode === 'vortex') {
+        state.vortexQuality = 'low';
+        state.vortexLoadAvg = 0;
+        state.vortexStableFrames = 0;
+        state.vortexPoolQuality = 0;
+      }
+
       if (state.mode === 'milkdrop') {
         loadThemePreset(state.theme);
         state.bcLastCycle = performance.now();
@@ -2796,13 +3625,18 @@ function handleUi() {
 
   toggleBg.addEventListener('change', () => {
     state.showBgFx = toggleBg.checked;
+    if (state.mode === 'milkdrop' && state.showBgFx) {
+      loadThemePreset(state.theme);
+      state.bcLastCycle = performance.now();
+    }
+    updateModeVisibility();
   });
 
   toggleAutocycle.addEventListener('change', () => {
     state.autoCycle = toggleAutocycle.checked;
     const bcCanvas = document.getElementById('butterchurn-canvas');
     if (bcCanvas) updateMilkdropFilter(bcCanvas);
-    
+
     if (state.pipWindow) {
       const pipAuto = state.pipWindow.document.getElementById('pip-autocolor');
       if (pipAuto) pipAuto.textContent = state.autoCycle ? 'AUTO: ON' : 'AUTO: OFF';
@@ -2845,12 +3679,14 @@ window.state = state;
 (function boot() {
   buildIdleScreen();
   handleUi();
+  applyIntroTitleMobileFix();
+  window.addEventListener('resize', applyIntroTitleMobileFix);
   applyTheme('default', true);
   initBgParticles();
   initAmbientParticles();
   updateMiniLabel();
   idleAnimation();
-  
+
   if ('mediaSession' in navigator) {
     navigator.mediaSession.setActionHandler('play', () => {
       if (state.paused) btnPause.click();
@@ -2859,7 +3695,7 @@ window.state = state;
       if (!state.paused) btnPause.click();
     });
   }
-  
+
   // Background worker to keep PIP alive when tab is hidden
   const code = `
     self.onmessage = function(e) {
@@ -2898,7 +3734,7 @@ window.state = state;
 
 function initAutoPip() {
   if (!document.pictureInPictureEnabled) return;
-  
+
   let video = document.getElementById('pip-video');
   if (!video) {
     video = document.createElement('video');
@@ -2915,7 +3751,7 @@ function initAutoPip() {
     video.playsInline = true;
     document.body.appendChild(video);
   }
-  
+
   if (!video.srcObject) {
     try {
       video.srcObject = miniCanvas.captureStream(30);
@@ -2930,4 +3766,476 @@ function initAutoPip() {
       console.warn('Could not initialize auto-PiP stream:', error);
     }
   }
+}
+
+
+// ==========================================
+// THREE.JS VORTEX MODE
+// ==========================================
+
+let THREE, EffectComposer, RenderPass, UnrealBloomPass, Reflector;
+
+async function initThreeVortex() {
+  if (state.threeVortexInitialized || !state.threeVortexSupported) return;
+  state.threeVortexInitialized = 'loading';
+
+  try {
+    THREE = await import('three');
+    const [composerModule, renderPassModule, bloomPassModule, reflectorModule] = await Promise.all([
+      import('three/addons/postprocessing/EffectComposer.js'),
+      import('three/addons/postprocessing/RenderPass.js'),
+      import('three/addons/postprocessing/UnrealBloomPass.js'),
+      import('three/addons/objects/Reflector.js')
+    ]);
+    EffectComposer = composerModule.EffectComposer;
+    RenderPass = renderPassModule.RenderPass;
+    UnrealBloomPass = bloomPassModule.UnrealBloomPass;
+    Reflector = reflectorModule.Reflector;
+    
+    setupThreeScene();
+    state.threeVortexInitialized = true;
+    resizeThreeVortex();
+  } catch (err) {
+    console.error('Failed to initialize Premium Three.js Vortex:', err);
+    state.threeVortexSupported = false;
+  }
+}
+
+// Extrude a premium flat-top hexagonal ring with bevels
+function createThickHexRing(radius, tubeRadius, color, emissiveIntensity) {
+  const shape = new THREE.Shape();
+  for (let i = 0; i < 6; i++) {
+    const angle = i * Math.PI / 3;
+    const x = radius * Math.cos(angle);
+    const y = radius * Math.sin(angle);
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  shape.closePath();
+
+  const hole = new THREE.Path();
+  const innerRadius = radius - tubeRadius;
+  for (let i = 5; i >= 0; i--) {
+    const angle = i * Math.PI / 3;
+    const x = innerRadius * Math.cos(angle);
+    const y = innerRadius * Math.sin(angle);
+    if (i === 5) hole.moveTo(x, y);
+    else hole.lineTo(x, y);
+  }
+  hole.closePath();
+  shape.holes.push(hole);
+
+  const extrudeSettings = {
+    depth: 0.12,
+    bevelEnabled: true,
+    bevelThickness: 0.02,
+    bevelSize: 0.02,
+    bevelSegments: 2
+  };
+
+  const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  geo.center();
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x05000a,
+    emissive: new THREE.Color(color),
+    emissiveIntensity: emissiveIntensity,
+    roughness: 0.1,
+    metalness: 0.9
+  });
+
+  return new THREE.Mesh(geo, mat);
+}
+
+// Helper to create beveled 3D boxes for modules
+function createBeveledBox(w, h, d, bevel, color, emissive, emissiveIntensity) {
+  const shape = new THREE.Shape();
+  const x = -w/2;
+  const y = -h/2;
+  shape.moveTo(x + bevel, y);
+  shape.lineTo(x + w - bevel, y);
+  shape.quadraticCurveTo(x + w, y, x + w, y + bevel);
+  shape.lineTo(x + w, y + h - bevel);
+  shape.quadraticCurveTo(x + w, y + h, x + w - bevel, y + h);
+  shape.lineTo(x + bevel, y + h);
+  shape.quadraticCurveTo(x, y + h, x, y + h - bevel);
+  shape.lineTo(x, y + bevel);
+  shape.quadraticCurveTo(x, y, x + bevel, y);
+  shape.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: d - bevel * 2,
+    bevelEnabled: true,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelSegments: 2
+  });
+  geo.center();
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color),
+    emissive: new THREE.Color(emissive),
+    emissiveIntensity: emissiveIntensity,
+    roughness: 0.15,
+    metalness: 0.85
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+// Generate flat wedge geometry for volumetric light shafts
+function createLightShaft(isRight) {
+  const geo = new THREE.BufferGeometry();
+  const w = 0.6;  
+  const h = 0.95; 
+  const len = 1.8; 
+  
+  const vertices = new Float32Array(isRight ? [
+    0, h/2, -w/2, 0, h/2, w/2, -len, 0, 0,
+    0, -h/2, w/2, 0, -h/2, -w/2, -len, 0, 0,
+    0, h/2, w/2, 0, -h/2, w/2, -len, 0, 0,
+    0, -h/2, -w/2, 0, h/2, -w/2, -len, 0, 0
+  ] : [
+    0, h/2, -w/2, len, 0, 0, 0, h/2, w/2,
+    0, -h/2, w/2, len, 0, 0, 0, -h/2, -w/2,
+    0, h/2, w/2, len, 0, 0, 0, -h/2, w/2,
+    0, -h/2, -w/2, len, 0, 0, 0, h/2, -w/2
+  ]);
+  
+  geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  geo.computeVertexNormals();
+  
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xcc0088,
+    opacity: 0.04,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  
+  return new THREE.Mesh(geo, mat);
+}
+
+function setupThreeScene() {
+  const canvas = document.getElementById('three-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.8;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  state.threeVortexRenderer = renderer;
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x1a0025, 0.018);
+  scene.background = new THREE.Color(0x1a0025);
+  state.threeVortexScene = scene;
+
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 150);
+  camera.position.set(0, 0.3, 2);
+  camera.lookAt(0, 0.3, -100);
+  state.threeVortexCamera = camera;
+
+  const renderScene = new RenderPass(scene, camera);
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.9, 0.75, 0.15
+  );
+  const composer = new EffectComposer(renderer);
+  composer.addPass(renderScene);
+  composer.addPass(bloomPass);
+  state.threeVortexComposer = composer;
+
+  scene.add(new THREE.AmbientLight(0x220033, 0.4));
+
+  const hexRadius   = 3.0;
+  const ringCount   = 24;
+  const ringSpacing = 4.0;
+  const tunnelLen   = ringCount * ringSpacing;
+
+  state.threeVortexData = {
+    rings: [], modules: [],
+    particles: null,
+    bloomPass,
+    ringCount, ringSpacing,
+    flySpeed: 0.06,
+    cameraKick: 0,
+    smoothedBass: 0, smoothedLowMid: 0,
+    smoothedMid: 0, smoothedHigh: 0,
+    smoothedAmplitude: 0, lastBeatTime: 0
+  };
+
+  // ================================================================
+  // GLOSSY MIRROR FLOOR & CEILING
+  // ================================================================
+  const floorGeo = new THREE.PlaneGeometry(10, tunnelLen + 20, 1, 1);
+  const floorReflector = new Reflector(floorGeo, {
+    clipBias: 0.003,
+    textureWidth: 1024,
+    textureHeight: 1024,
+    color: 0x110218
+  });
+  floorReflector.rotation.x = -Math.PI / 2;
+  floorReflector.position.set(0, -hexRadius, -(tunnelLen / 2));
+  scene.add(floorReflector);
+
+  const ceilGeo = new THREE.PlaneGeometry(10, tunnelLen + 20, 1, 1);
+  const ceilReflector = new Reflector(ceilGeo, {
+    clipBias: 0.003,
+    textureWidth: 1024,
+    textureHeight: 1024,
+    color: 0x110218
+  });
+  ceilReflector.rotation.x = Math.PI / 2;
+  ceilReflector.position.set(0, hexRadius, -(tunnelLen / 2));
+  scene.add(ceilReflector);
+
+  // ================================================================
+  // SPINE STRUTS
+  // ================================================================
+  const spineGeo = new THREE.BoxGeometry(0.05, 0.05, tunnelLen + 20);
+  const spineMat = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    emissive: new THREE.Color(0x44ddff),
+    emissiveIntensity: 0.9,
+    roughness: 0.1,
+    metalness: 0.9
+  });
+  const topSpine = new THREE.Mesh(spineGeo, spineMat);
+  topSpine.position.set(0, hexRadius, -(tunnelLen / 2));
+  scene.add(topSpine);
+
+  const botSpine = new THREE.Mesh(spineGeo, spineMat.clone());
+  botSpine.position.set(0, -hexRadius, -(tunnelLen / 2));
+  scene.add(botSpine);
+
+  // ================================================================
+  // HEX RINGS
+  // ================================================================
+  for (let i = 0; i < ringCount; i++) {
+    const zPos = -(i * ringSpacing);
+    const ringGroup = new THREE.Group();
+    ringGroup.position.z = zPos;
+
+    const outer = createThickHexRing(hexRadius, 0.08, 0xff00cc, 1.4);
+    ringGroup.add(outer);
+
+    const inner = createThickHexRing(hexRadius - 0.3, 0.06, 0x00ccff, 1.1);
+    ringGroup.add(inner);
+
+    const nodeMat = new THREE.MeshStandardMaterial({
+      color: 0x000000,
+      emissive: new THREE.Color(0xff00cc),
+      emissiveIntensity: 1.8,
+      roughness: 0.1,
+      metalness: 0.9
+    });
+    const nodeGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
+    
+    const nodeTop = new THREE.Mesh(nodeGeo, nodeMat);
+    nodeTop.position.set(0, hexRadius, 0);
+    
+    const nodeBot = new THREE.Mesh(nodeGeo, nodeMat.clone());
+    nodeBot.position.set(0, -hexRadius, 0);
+    
+    ringGroup.add(nodeTop, nodeBot);
+
+    scene.add(ringGroup);
+
+    state.threeVortexData.rings.push({
+      group: ringGroup,
+      outerMesh: outer,
+      innerMesh: inner
+    });
+  }
+
+  // ================================================================
+  // SIDE WALL MODULES
+  // ================================================================
+  const sideX = hexRadius;
+
+  for (let i = 0; i < ringCount - 1; i++) {
+    const zPos = -(i * ringSpacing) - ringSpacing / 2;
+    const modGroup = new THREE.Group();
+    modGroup.position.z = zPos;
+
+    // Right Side Module
+    const rGroup = new THREE.Group();
+    rGroup.position.set(sideX, 0, 0);
+    
+    const rFrame = createBeveledBox(0.8, 1.2, 0.4, 0.02, 0x020005, 0xcc00aa, 0.5);
+    rFrame.rotation.y = Math.PI / 2;
+    
+    const rGlow = createBeveledBox(0.6, 0.95, 0.05, 0.005, 0x001122, 0xe0faff, 1.2);
+    rGlow.rotation.y = Math.PI / 2;
+    rGlow.position.set(-0.18, 0, 0);
+    
+    const rShaft = createLightShaft(true);
+    rShaft.position.set(-0.2, 0, 0);
+
+    rGroup.add(rFrame, rGlow, rShaft);
+    modGroup.add(rGroup);
+
+    // Left Side Module
+    const lGroup = new THREE.Group();
+    lGroup.position.set(-sideX, 0, 0);
+    
+    const lFrame = createBeveledBox(0.8, 1.2, 0.4, 0.02, 0x020005, 0xcc00aa, 0.5);
+    lFrame.rotation.y = Math.PI / 2;
+    
+    const lGlow = createBeveledBox(0.6, 0.95, 0.05, 0.005, 0x001122, 0xe0faff, 1.2);
+    lGlow.rotation.y = Math.PI / 2;
+    lGlow.position.set(0.18, 0, 0);
+    
+    const lShaft = createLightShaft(false);
+    lShaft.position.set(0.2, 0, 0);
+
+    lGroup.add(lFrame, lGlow, lShaft);
+    modGroup.add(lGroup);
+
+    scene.add(modGroup);
+    state.threeVortexData.modules.push({
+      group: modGroup,
+      glowR: rGlow,
+      glowL: lGlow
+    });
+  }
+
+  // ================================================================
+  // ATMOSPHERIC HAZE CYLINDER
+  // ================================================================
+  const hazeGeo = new THREE.CylinderGeometry(hexRadius * 0.9, hexRadius * 0.9, tunnelLen + 20, 6, 1, true);
+  const hazeMat = new THREE.MeshBasicMaterial({
+    color: 0x330044,
+    opacity: 0.03,
+    transparent: true,
+    side: THREE.BackSide,
+    depthWrite: false
+  });
+  const hazeMesh = new THREE.Mesh(hazeGeo, hazeMat);
+  hazeMesh.rotation.x = Math.PI / 2;
+  hazeMesh.position.set(0, 0, -(tunnelLen / 2));
+  scene.add(hazeMesh);
+
+  // ================================================================
+  // FLOATING SQUARE PARTICLES
+  // ================================================================
+  const pCount = 200;
+  const particles = [];
+  const pMatMag  = new THREE.MeshBasicMaterial({ color: 0xff44cc, transparent: true, opacity: 0.7, depthWrite: false });
+  const pMatCyan = new THREE.MeshBasicMaterial({ color: 0x44ccff, transparent: true, opacity: 0.5, depthWrite: false });
+  const pGeo = new THREE.PlaneGeometry(1, 1);
+
+  for (let i = 0; i < pCount; i++) {
+    const isMag = Math.random() < 0.7;
+    const mesh = new THREE.Mesh(pGeo, isMag ? pMatMag : pMatCyan);
+    const size = 0.04 + Math.random() * 0.08;
+    mesh.scale.set(size, size, 1);
+    mesh.position.set(
+      (Math.random() - 0.5) * hexRadius * 2.2,
+      (Math.random() - 0.5) * hexRadius * 2,
+      -Math.random() * tunnelLen
+    );
+    mesh.userData = { speed: 0.02 + Math.random() * 0.03, rotSpeed: (Math.random() - 0.5) * 0.008, angle: Math.random() * Math.PI };
+    scene.add(mesh);
+    particles.push(mesh);
+  }
+  state.threeVortexData.particles = particles;
+}
+
+function resizeThreeVortex() {
+  if (!state.threeVortexInitialized || state.threeVortexInitialized === 'loading') return;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  state.threeVortexCamera.aspect = w / h;
+  state.threeVortexCamera.updateProjectionMatrix();
+  state.threeVortexRenderer.setSize(w, h);
+  state.threeVortexComposer.setSize(w, h);
+}
+
+function getEnergyForHz(startHz, endHz) {
+  if (!state.freqData || !state.bufferLength || !state.audioCtx) return 0;
+  const nyquist = state.audioCtx.sampleRate / 2;
+  const startBin = Math.floor((startHz / nyquist) * state.bufferLength);
+  const endBin   = Math.ceil((endHz   / nyquist) * state.bufferLength);
+  let sum = 0, count = 0;
+  for (let i = startBin; i <= endBin && i < state.bufferLength; i++) {
+    sum += state.freqData[i];
+    count++;
+  }
+  return count ? (sum / count) / 255 : 0;
+}
+
+function updateThreeVortexAudio() {
+  const data = state.threeVortexData;
+  if (!data) return;
+
+  const now = performance.now();
+
+  let rawBass   = Math.min(getEnergyForHz(0,    200)   * state.sensitivity, 1.2);
+  let rawLowMid = Math.min(getEnergyForHz(200,  800)   * state.sensitivity, 1.2);
+  let rawMid    = Math.min(getEnergyForHz(800,  2000)  * state.sensitivity, 1.2);
+  let rawHigh   = Math.min(getEnergyForHz(2000, 10000) * state.sensitivity, 1.2);
+  let rawAmp    = Math.min(getEnergyForHz(0,    10000) * state.sensitivity, 1.2);
+
+  const L = 0.85;
+  data.smoothedBass      = data.smoothedBass      * L + rawBass   * (1-L);
+  data.smoothedLowMid    = data.smoothedLowMid    * L + rawLowMid * (1-L);
+  data.smoothedMid       = data.smoothedMid       * L + rawMid    * (1-L);
+  data.smoothedHigh      = data.smoothedHigh      * L + rawHigh   * (1-L);
+  data.smoothedAmplitude = data.smoothedAmplitude * L + rawAmp    * (1-L);
+
+  if (rawBass > data.smoothedBass * 1.4 && now - data.lastBeatTime > 200) {
+    data.cameraKick = 0.15;
+    data.lastBeatTime = now;
+  }
+
+  data.flySpeed   = 0.06 + data.smoothedAmplitude * 0.14 + data.cameraKick;
+  data.cameraKick *= 0.85;
+
+  data.bloomPass.strength = 0.9 + data.smoothedLowMid * 1.3;
+
+  const ringScale     = 1.0 + data.smoothedBass * 0.08;
+  const panelEmissive = 1.2 + data.smoothedMid  * 1.5;
+
+  const t = now * 0.001;
+  state.threeVortexCamera.position.x = Math.sin(t * 0.4) * 0.06 * (0.3 + data.smoothedBass);
+  state.threeVortexCamera.position.y = 0.3 + Math.cos(t * 0.3) * 0.04 * (0.3 + data.smoothedBass);
+
+  const camZ     = state.threeVortexCamera.position.z;
+  const wrapDist = data.ringCount * data.ringSpacing;
+
+  data.rings.forEach(r => {
+    r.group.position.z    += data.flySpeed;
+    r.group.scale.set(ringScale, ringScale, 1);
+    if (r.group.position.z > camZ + 2) {
+      r.group.position.z    -= wrapDist;
+    }
+  });
+
+  data.modules.forEach(m => {
+    m.group.position.z += data.flySpeed;
+    if (m.group.position.z > camZ + 2) m.group.position.z -= wrapDist;
+    m.glowR.material.emissiveIntensity = panelEmissive;
+    m.glowL.material.emissiveIntensity = panelEmissive;
+  });
+
+  const particleBoost = data.smoothedHigh * 0.12;
+  data.particles.forEach(p => {
+    p.position.z += p.userData.speed + particleBoost + data.flySpeed;
+    p.userData.angle += p.userData.rotSpeed;
+    p.lookAt(state.threeVortexCamera.position);
+    p.rotateZ(p.userData.angle);
+    if (p.position.z > camZ + 1) {
+      p.position.z -= wrapDist;
+      p.position.x  = (Math.random() - 0.5) * 6.0;
+      p.position.y  = (Math.random() - 0.5) * 6.0;
+    }
+  });
+}
+
+function renderThreeVortex() {
+  if (!state.threeVortexComposer || !state.threeVortexData) return;
+  updateThreeVortexAudio();
+  state.threeVortexComposer.render();
 }

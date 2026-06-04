@@ -23,6 +23,7 @@
   <canvas id="bg-canvas"></canvas>
   <canvas id="butterchurn-canvas" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; opacity: 0; transition: opacity 0.4s ease;"></canvas>
   <canvas id="viz-canvas"></canvas>
+  <canvas id="three-canvas"></canvas>
 
   <div id="file-player" class="hidden">
     <div id="file-player-name">No file loaded</div>
@@ -88,6 +89,7 @@
         <button class="mode-btn active" data-mode="bars" type="button">BARS</button>
         <button class="mode-btn" data-mode="circle" type="button">RADIAL</button>
         <button class="mode-btn" data-mode="wave" type="button">WAVE</button>
+        <button class="mode-btn" data-mode="vortex" type="button">VORTEX</button>
         <button class="mode-btn" data-mode="milkdrop" type="button">MILKDROP</button>
       </div>
     </div>
@@ -150,28 +152,16 @@
 
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
   <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
-  <script src="script.js?v=1.1"></script>
-
-  <script>
-    function forceMobileFix() {
-      const title = document.getElementById('intro-title');
-      if (!title) return;
-      if (window.innerWidth <= 600) {
-        title.style.fontSize = Math.min(window.innerWidth * 0.11, 42) + 'px';
-        title.style.letterSpacing = '0.3rem';
-        title.style.paddingLeft = '0.3rem';
-        title.style.marginLeft = '0';
-        title.style.background = 'transparent'; // Remove any debug red
-      }
-      if (window.innerWidth <= 480) {
-        title.style.fontSize = Math.min(window.innerWidth * 0.09, 32) + 'px';
-        title.style.letterSpacing = '0.2rem';
+  <!-- Three.js ES Module Imports for Vortex Mode -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
       }
     }
-    window.addEventListener('load', forceMobileFix);
-    window.addEventListener('resize', forceMobileFix);
-    forceMobileFix();
   </script>
+  <script src="script.js?v=2.3"></script>
 
 </body>
 </html>
