@@ -4178,12 +4178,25 @@ function updateThreeVortexAudio() {
   let rawHigh   = Math.min(getEnergyForHz(2000, 10000) * state.sensitivity, 1.2);
   let rawAmp    = Math.min(getEnergyForHz(0,    10000) * state.sensitivity, 1.2);
 
-  const L = 0.85;
-  data.smoothedBass      = data.smoothedBass      * L + rawBass   * (1-L);
-  data.smoothedLowMid    = data.smoothedLowMid    * L + rawLowMid * (1-L);
-  data.smoothedMid       = data.smoothedMid       * L + rawMid    * (1-L);
-  data.smoothedHigh      = data.smoothedHigh      * L + rawHigh   * (1-L);
-  data.smoothedAmplitude = data.smoothedAmplitude * L + rawAmp    * (1-L);
+  // Dynamic Audio AGC (normalize quiet mic and loud file sources smoothly)
+  if (!data.runningAmpAverage) data.runningAmpAverage = 0.25;
+  if (data.smoothedAmplitude > 0.005) {
+    data.runningAmpAverage = data.runningAmpAverage * 0.99 + data.smoothedAmplitude * 0.01;
+  }
+  const dynamicGain = Math.min(Math.max(0.25 / data.runningAmpAverage, 0.45), 2.5);
+
+  rawBass   *= dynamicGain;
+  rawLowMid *= dynamicGain;
+  rawMid    *= dynamicGain;
+  rawHigh   *= dynamicGain;
+  rawAmp    *= dynamicGain;
+
+  // Response coefficients tuned for snappy and responsive feedback
+  data.smoothedBass      = data.smoothedBass      * 0.82 + rawBass   * 0.18;
+  data.smoothedLowMid    = data.smoothedLowMid    * 0.78 + rawLowMid * 0.22;
+  data.smoothedMid       = data.smoothedMid       * 0.75 + rawMid    * 0.25;
+  data.smoothedHigh      = data.smoothedHigh      * 0.68 + rawHigh   * 0.32;
+  data.smoothedAmplitude = data.smoothedAmplitude * 0.80 + rawAmp    * 0.20;
 
   if (rawBass > data.smoothedBass * 1.4 && now - data.lastBeatTime > 200) {
     data.cameraKick = 0.15;
@@ -4193,29 +4206,47 @@ function updateThreeVortexAudio() {
   data.flySpeed   = 0.06 + data.smoothedAmplitude * 0.14 + data.cameraKick;
   data.cameraKick *= 0.85;
 
-  data.bloomPass.strength = 0.9 + data.smoothedLowMid * 1.3;
+  // Cap bloom at 1.65 to prevent extreme blowout while keeping visualizer neon bright
+  data.bloomPass.strength = Math.min(0.85 + data.smoothedLowMid * 0.8, 1.65);
 
-  const ringScale     = 1.0 + data.smoothedBass * 0.08;
-  const panelEmissive = 1.2 + data.smoothedMid  * 1.5;
+  // Wave propagation history buffers
+  if (!data.bassHistory) {
+    data.bassHistory = new Array(data.rings.length).fill(0);
+    data.midHistory  = new Array(data.modules.length).fill(0);
+  }
+  data.bassHistory.unshift(data.smoothedBass);
+  data.bassHistory.pop();
+
+  data.midHistory.unshift(data.smoothedMid);
+  data.midHistory.pop();
 
   const t = now * 0.001;
+  // Cinematic camera sway + Z-axis roll for a smooth flying sensation
   state.threeVortexCamera.position.x = Math.sin(t * 0.4) * 0.06 * (0.3 + data.smoothedBass);
   state.threeVortexCamera.position.y = 0.3 + Math.cos(t * 0.3) * 0.04 * (0.3 + data.smoothedBass);
+  state.threeVortexCamera.rotation.z = Math.sin(t * 0.25) * 0.015;
 
   const camZ     = state.threeVortexCamera.position.z;
   const wrapDist = data.ringCount * data.ringSpacing;
 
-  data.rings.forEach(r => {
+  // Pulse rings as a wave propagating down the tunnel
+  data.rings.forEach((r, idx) => {
     r.group.position.z    += data.flySpeed;
-    r.group.scale.set(ringScale, ringScale, 1);
+    const ringBass = data.bassHistory[idx] || 0;
+    const currentScale = 1.0 + ringBass * 0.08;
+    r.group.scale.set(currentScale, currentScale, 1);
     if (r.group.position.z > camZ + 2) {
       r.group.position.z    -= wrapDist;
     }
   });
 
-  data.modules.forEach(m => {
+  // Pulse side modules as waves running down the corridor walls
+  data.modules.forEach((m, idx) => {
     m.group.position.z += data.flySpeed;
     if (m.group.position.z > camZ + 2) m.group.position.z -= wrapDist;
+    
+    const modMid = data.midHistory[idx] || 0;
+    const panelEmissive = 1.2 + modMid * 1.5;
     m.glowR.material.emissiveIntensity = panelEmissive;
     m.glowL.material.emissiveIntensity = panelEmissive;
   });
