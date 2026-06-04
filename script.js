@@ -1044,7 +1044,7 @@ function renderLoop(fromWorker = false) {
   const pumpScale = state.bassMode ? 1 + (state.bassSmoothed * 0.2) : 1;
   state.glowMultiplier = state.bassMode ? 1 + (state.bassSmoothed * 1.2) : 1;
 
-  if (state.bassMode && state.mode !== 'vortex') {
+  if (state.bassMode) {
       document.body.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
   } else {
       document.body.style.transform = '';
@@ -4566,25 +4566,20 @@ const data = state.threeVortexData;
   data.smoothedAmplitude = data.smoothedAmplitude * 0.78 + rawAmp    * 0.22;
 
   // ── Beat detection → camera kick ─────────────────────────────────
-  let beatThreshold = state.bassMode ? 1.22 : 1.35;
-  let kickStrength = state.bassMode ? 0.55 : 0.22;
-  let cooldown = state.bassMode ? 120 : 180;
-  
-  if (rawBass > data.smoothedBass * beatThreshold && now - data.lastBeatTime > cooldown) {
-    data.cameraKick = kickStrength;
+  if (rawBass > data.smoothedBass * 1.35 && now - data.lastBeatTime > 180) {
+    data.cameraKick = 0.22;
     data.lastBeatTime = now;
   }
 
   // ── Tunnel fly speed — audio driven ──────────────────────────────
   // UNIFIED SPEED: Consistently fast baseline for all themes, no theme multipliers
-  const speedMulti = state.bassMode ? 2.2 : 1.5;
-  data.flySpeed  = 0.45 + data.smoothedAmplitude * speedMulti + data.cameraKick;
+  data.flySpeed  = 0.45 + data.smoothedAmplitude * 1.5 + data.cameraKick;
   data.cameraKick *= 0.82;
 
   // ── Bloom — rises strongly with energy, unified for all themes ─
   data.bloomPass.strength = Math.min(
-    0.65 + data.smoothedLowMid * 0.45 + data.smoothedBass * (state.bassMode ? 0.85 : 0.35),
-    state.bassMode ? 2.5 : 1.4
+    0.65 + data.smoothedLowMid * 0.45 + data.smoothedBass * 0.35,
+    1.4
   );
 
   // ── Wave history buffers (propagate bass/mid as wave down tunnel) ─
@@ -4599,21 +4594,12 @@ const data = state.threeVortexData;
 
   const t = now * 0.001;
 
-  // ── Cinematic camera sway & FOV pulse ─────────────────────────────
-  const bassMulti = state.bassMode ? 2.5 : 1.0;
+  // ── Cinematic camera sway ─────────────────────────────────────────
   const swayX = Math.sin(t * 0.35) * 0.055 + Math.sin(t * 0.11) * 0.02;
   const swayY = Math.cos(t * 0.28) * 0.04  + Math.cos(t * 0.17) * 0.015;
-  state.threeVortexCamera.position.x = swayX * (0.4 + data.smoothedBass * 0.7 * bassMulti);
-  state.threeVortexCamera.position.y = 0.25 + swayY * (0.4 + data.smoothedBass * 0.7 * bassMulti);
-  state.threeVortexCamera.rotation.z = Math.sin(t * 0.22) * 0.014 * (1 + data.smoothedBass * 0.6 * bassMulti);
-  
-  // FOV pumping for Bass Mode
-  let targetFov = 75;
-  if (state.bassMode) {
-     targetFov += data.smoothedBass * 30 + data.cameraKick * 45;
-  }
-  state.threeVortexCamera.fov = state.threeVortexCamera.fov * 0.8 + targetFov * 0.2;
-  state.threeVortexCamera.updateProjectionMatrix();
+  state.threeVortexCamera.position.x = swayX * (0.4 + data.smoothedBass * 0.7);
+  state.threeVortexCamera.position.y = 0.25 + swayY * (0.4 + data.smoothedBass * 0.7);
+  state.threeVortexCamera.rotation.z = Math.sin(t * 0.22) * 0.014 * (1 + data.smoothedBass * 0.6);
 
   const camZ     = state.threeVortexCamera.position.z;
   const wrapDist = data.ringCount * data.ringSpacing;
@@ -4641,9 +4627,9 @@ const data = state.threeVortexData;
   data.rings.forEach((r, idx) => {
     r.group.position.z += data.flySpeed;
     const ringBass = data.bassHistory[idx] || 0;
-    // Scale pulse: more reactive — up to 12% expansion on beat (or 35% in bass mode)
-    const targetScale = 1.0 + ringBass * (state.bassMode ? 0.35 : 0.12);
-    r.baseScale = (r.baseScale || 1.0) * (state.bassMode ? 0.75 : 0.85) + targetScale * (state.bassMode ? 0.25 : 0.15);
+    // Scale pulse: more reactive — up to 12% expansion on beat
+    const targetScale = 1.0 + ringBass * 0.12;
+    r.baseScale = (r.baseScale || 1.0) * 0.85 + targetScale * 0.15;
     r.group.scale.set(r.baseScale, r.baseScale, 1);
     
     // Dynamically balance emissive intensity
@@ -4689,7 +4675,7 @@ const data = state.threeVortexData;
     }
   }
   pData.geo.attributes.position.needsUpdate = true;
-  pData.system.material.opacity = (state.bassMode ? 0.55 : 0.38) + data.smoothedHigh * (state.bassMode ? 0.65 : 0.42);
+  pData.system.material.opacity = 0.38 + data.smoothedHigh * 0.42;
 
   // ── Infinity mirror panels ────────────────────────────────────────
   if (data.infinityPanels) {
