@@ -642,9 +642,6 @@ function paletteColor(t, alpha = 1) {
   }
 
   let palette = theme.palette;
-  if (state.theme === 'chill' && state.mode === 'bars') {
-    palette = ['#e066ff', '#bc20ff', '#8b00ff', '#c738ff'];
-  }
 
   const scaled = clamp(t, 0, 0.9999) * (palette.length - 1);
   const index = Math.floor(scaled);
@@ -1064,6 +1061,18 @@ function renderLoop(fromWorker = false) {
     const bcCanvas = document.getElementById('butterchurn-canvas');
     if (bcCanvas && state.mode === 'milkdrop') {
       updateMilkdropFilter(bcCanvas);
+    }
+    
+    // Update UI panel colors to match Auto Color
+    const hue = Math.floor(state.colorHue);
+    document.body.style.setProperty('--acc1', `hsl(${hue}, 100%, 65%)`);
+    document.body.style.setProperty('--glow', `hsla(${hue}, 100%, 65%, 0.4)`);
+    document.body.style.setProperty('--glow-hi', `hsla(${hue}, 100%, 65%, 0.7)`);
+    
+    // Also sync the PiP window UI if active
+    if (state.pipWindow) {
+      state.pipWindow.document.body.style.setProperty('--acc1', `hsl(${hue}, 100%, 65%)`);
+      state.pipWindow.document.body.style.setProperty('--glow-hi', `hsla(${hue}, 100%, 65%, 0.7)`);
     }
   }
 
@@ -1534,21 +1543,38 @@ function getAmplitude(index, total) {
 
 function drawBars(c, width, height) {
   const theme = themeConfig();
-  const count = theme.label === 'BLACK & WHITE' ? 150 : 110;
-  const gap = theme.label === 'BLACK & WHITE' ? 3 : 4;
-  const barWidth = Math.max(1.2, (width - gap * (count - 1)) / count);
+  const baseCount = theme.label === 'BLACK & WHITE' ? 150 : 110;
+  
+  // Dynamically reduce the number of bars on narrow screens so they stay thick and premium
+  const count = Math.max(32, Math.floor(baseCount * Math.min(1.0, width / 1400)));
+  
+  // Make gap and barWidth strictly proportional to screen width so they scale perfectly
+  const slotWidth = width / count;
+  const gapRatio = theme.label === 'BLACK & WHITE' ? 0.2 : 0.3; // B&W has smaller gaps
+  const gap = slotWidth * gapRatio;
+  const barWidth = slotWidth * (1 - gapRatio);
+  
+  // Perfectly center the bars on the screen
+  const totalUsed = count * barWidth + (count - 1) * gap;
+  const startX = (width - totalUsed) / 2;
+
   const centerY = height * 0.52;
   const maxHeight = height * (theme.road ? 0.26 : 0.38);
   const cornerRadius = theme.label === 'BLACK & WHITE' ? 0 : Math.min(7, barWidth * 0.48);
+  
+  // Scale glows proportionally instead of using hardcoded pixels
+  const outerGlowSpread = barWidth * 0.35;
+  const innerGlowSpread = barWidth * 0.12;
 
   const isBW = theme.label === 'BLACK & WHITE' && !state.autoCycle;
+  const minLength = isBW ? 3 : Math.max(3, barWidth * 0.5);
 
   c.save();
 
   for (let i = 0; i < count; i += 1) {
     const amp = getAmplitude(i, count);
-    const length = clamp(maxHeight * amp * 1.45 * (1 + (state.bassSmoothed || 0) * 0.5), isBW ? 3 : 4, maxHeight);
-    const x = i * (barWidth + gap);
+    const length = clamp(maxHeight * amp * 1.45 * (1 + (state.bassSmoothed || 0) * 0.5), minLength, maxHeight);
+    const x = startX + i * (barWidth + gap);
 
     if (isBW) {
       c.fillStyle = 'rgba(255, 255, 255, 0.86)';
@@ -1568,16 +1594,29 @@ function drawBars(c, width, height) {
       c.fillStyle = colorFull;
 
       let currentGlowInt = theme.glowIntensity;
-      if (state.theme === 'chill') currentGlowInt = 1.2;
 
       c.globalAlpha = 0.15 * currentGlowInt;
       c.beginPath();
-      roundRect(c, x - 4, centerY - length - 4, barWidth + 8, length * 2 + 8, cornerRadius + 2);
+      roundRect(
+        c, 
+        x - outerGlowSpread, 
+        centerY - length - outerGlowSpread, 
+        barWidth + outerGlowSpread * 2, 
+        length * 2 + outerGlowSpread * 2, 
+        cornerRadius + outerGlowSpread * 0.5
+      );
       c.fill();
 
       c.globalAlpha = 0.3 * currentGlowInt;
       c.beginPath();
-      roundRect(c, x - 1.5, centerY - length - 1.5, barWidth + 3, length * 2 + 3, cornerRadius + 1);
+      roundRect(
+        c, 
+        x - innerGlowSpread, 
+        centerY - length - innerGlowSpread, 
+        barWidth + innerGlowSpread * 2, 
+        length * 2 + innerGlowSpread * 2, 
+        cornerRadius + innerGlowSpread * 0.5
+      );
       c.fill();
 
       c.globalCompositeOperation = 'source-over';
@@ -3634,6 +3673,16 @@ function handleUi() {
     state.autoCycle = toggleAutocycle.checked;
     const bcCanvas = document.getElementById('butterchurn-canvas');
     if (bcCanvas) updateMilkdropFilter(bcCanvas);
+    
+    // Reset UI colors if Auto Color was turned off
+    if (!state.autoCycle) {
+      applyTheme(state.theme, false);
+      if (state.pipWindow) {
+        // Also reset PiP window UI colors
+        state.pipWindow.document.body.style.removeProperty('--acc1');
+        state.pipWindow.document.body.style.removeProperty('--glow-hi');
+      }
+    }
     
     // Force theme reload for Vortex mode when toggling
     if (state.threeVortexData) {
