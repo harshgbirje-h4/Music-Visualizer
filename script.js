@@ -941,6 +941,12 @@ function stopAll() {
   audioEl.pause();
   state.running = false;
   state.paused = false;
+
+  if (state.mode === 'vortex' && state.threeVortexRenderer) {
+    state.threeVortexRenderer.setClearColor(0x000000, 1);
+    state.threeVortexRenderer.clear();
+  }
+
   sourceBadge.classList.add('hidden');
   updateMiniLabel();
   if (!state.idleFrameId) {
