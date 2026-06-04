@@ -4567,7 +4567,7 @@ const data = state.threeVortexData;
 
   // ── Beat detection → camera kick ─────────────────────────────────
   if (rawBass > data.smoothedBass * 1.35 && now - data.lastBeatTime > 180) {
-    data.cameraKick = 0.22;
+    data.cameraKick = state.bassMode ? 0.45 : 0.22;
     data.lastBeatTime = now;
   }
 
@@ -4597,9 +4597,10 @@ const data = state.threeVortexData;
   // ── Cinematic camera sway ─────────────────────────────────────────
   const swayX = Math.sin(t * 0.35) * 0.055 + Math.sin(t * 0.11) * 0.02;
   const swayY = Math.cos(t * 0.28) * 0.04  + Math.cos(t * 0.17) * 0.015;
-  state.threeVortexCamera.position.x = swayX * (0.4 + data.smoothedBass * 0.7);
-  state.threeVortexCamera.position.y = 0.25 + swayY * (0.4 + data.smoothedBass * 0.7);
-  state.threeVortexCamera.rotation.z = Math.sin(t * 0.22) * 0.014 * (1 + data.smoothedBass * 0.6);
+  const bassMulti = state.bassMode ? 2.2 : 1.0;
+  state.threeVortexCamera.position.x = swayX * (0.4 + data.smoothedBass * 0.7 * bassMulti);
+  state.threeVortexCamera.position.y = 0.25 + swayY * (0.4 + data.smoothedBass * 0.7 * bassMulti);
+  state.threeVortexCamera.rotation.z = Math.sin(t * 0.22) * 0.014 * (1 + data.smoothedBass * 0.6 * bassMulti);
 
   const camZ     = state.threeVortexCamera.position.z;
   const wrapDist = data.ringCount * data.ringSpacing;
@@ -4627,8 +4628,9 @@ const data = state.threeVortexData;
   data.rings.forEach((r, idx) => {
     r.group.position.z += data.flySpeed;
     const ringBass = data.bassHistory[idx] || 0;
-    // Scale pulse: more reactive — up to 12% expansion on beat
-    const targetScale = 1.0 + ringBass * 0.12;
+    // Scale pulse: more reactive — up to 12% expansion on beat (or 28% in Bass Mode)
+    const expansion = state.bassMode ? 0.28 : 0.12;
+    const targetScale = 1.0 + ringBass * expansion;
     r.baseScale = (r.baseScale || 1.0) * 0.85 + targetScale * 0.15;
     r.group.scale.set(r.baseScale, r.baseScale, 1);
     
