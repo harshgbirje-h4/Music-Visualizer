@@ -503,7 +503,7 @@ function updateCustomThemeColor(hex) {
 
   custom.background[0] = toHex(r*0.02, g*0.02, b*0.02);
   custom.background[1] = toHex(r*0.06, g*0.06, b*0.06);
-  custom.background[2] = toHex(r*0.1, g*0.1, b*0.1);
+  custom.background[2] = toHex(r*0.1,  g*0.1,  b*0.1);
 
   if (state.theme === 'custom') {
     document.body.style.setProperty('--acc1', hex);
@@ -514,6 +514,11 @@ function updateCustomThemeColor(hex) {
     document.body.style.setProperty('--panel', `rgba(${r*0.08}, ${g*0.08}, ${b*0.08}, 0.84)`);
 
     applyTheme('custom', true);
+
+    // Force vortex to re-apply the new custom color immediately
+    if (state.threeVortexData) {
+      state.threeVortexData._lastAppliedTheme = null;
+    }
   }
   syncPipColors();
   const cp = document.getElementById('custom-color-picker');
@@ -2565,20 +2570,6 @@ function drawVortex(c, width, height) {
     c.restore();
   }
 
-  const nebulaRadius = minDim * clamp(0.045 + glowBoost * 0.05, 0.035, 0.095);
-  const coreGlow = c.createRadialGradient(cx, cy, 0, cx, cy, nebulaRadius);
-  coreGlow.addColorStop(0, `rgba(235,250,255,${0.9 + state.vortexBeatGlow * 0.1})`);
-  coreGlow.addColorStop(0.3, cyberAlpha(colors.secondary, 0.5 + glowBoost * 0.3));
-  coreGlow.addColorStop(0.75, cyberAlpha(colors.primary, 0.15 + state.vortexBeatGlow * 0.15));
-  coreGlow.addColorStop(1, 'rgba(0,0,0,0)');
-  c.save();
-  c.globalCompositeOperation = 'screen';
-  c.fillStyle = coreGlow;
-  c.beginPath();
-  c.arc(cx, cy, nebulaRadius, 0, Math.PI * 2);
-  c.fill();
-  c.restore();
-
   const vignette = c.createRadialGradient(cx, cy, minDim * 0.35, cx, cy, Math.max(width, height) * 0.72);
   vignette.addColorStop(0, 'rgba(0,0,0,0)');
   vignette.addColorStop(0.55, 'rgba(0,0,0,0.25)');
@@ -3916,22 +3907,210 @@ function createLightShaft(isRight) {
   return new THREE.Mesh(geo, mat);
 }
 
+// Premium infinity mirror panel — nested magenta/cyan glowing frames
+function createInfinityMirrorPanel(width, height) {
+  const group   = new THREE.Group();
+  const mats    = [];
+  const borderW = 0.022;  // Dark mirror backing (occlude geometry behind the panel)
+  const base = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    new THREE.MeshBasicMaterial({ color: 0x010004 })
+  );
+  group.add(base);
+
+  const frameCount = 7;
+  for (let i = 0; i < frameCount; i++) {
+    const scale  = 1.0 - i * 0.12;
+    if (scale < 0.08) break;
+
+    const fw    = width  * scale;
+    const fh    = height * scale;
+    const zOff  = -(i + 1) * 0.006;
+    const color = (i % 2 === 0) ? 0xff00cc : 0x00ccff;
+    const baseOp = Math.max(0.05, 0.88 - i * 0.11);
+
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: baseOp,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    mat.userData.baseOpacity = baseOp;
+    mats.push(mat);
+
+    const addStrip = (sw, sh, sx, sy) => {
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), mat);
+      mesh.position.set(sx, sy, zOff);
+      group.add(mesh);
+    };
+    
+    addStrip(fw,      borderW, 0,                     fh / 2 - borderW / 2);  // top edge
+    addStrip(fw,      borderW, 0,                    -fh / 2 + borderW / 2);  // bottom edge
+    addStrip(borderW, fh,     -fw / 2 + borderW / 2,  0);                     // left edge
+    addStrip(borderW, fh,      fw / 2 - borderW / 2,  0);                     // right edge
+  }
+
+  return { group, mats };
+}
+
+// Flat hexagonal ring outline — 6 thin quads forming a hex border (used for OLED mirror)
+function createHexRingGroup(radius, tubeR, color, opacity) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  mat.userData.baseOpacity = opacity;
+  group.userData.mat = mat;
+
+  for (let i = 0; i < 6; i++) {
+    const a1 = i       * Math.PI / 3;
+    const a2 = (i + 1) * Math.PI / 3;
+    const x1 = radius * Math.cos(a1), y1 = radius * Math.sin(a1);
+    const x2 = radius * Math.cos(a2), y2 = radius * Math.sin(a2);
+    const cx  = (x1 + x2) / 2,  cy  = (y1 + y2) / 2;
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(len + tubeR, tubeR * 2), mat);
+    mesh.position.set(cx, cy, 0);
+    mesh.rotation.z = ang;
+    group.add(mesh);
+  }
+  return group;
+}
+
+// ================================================================
+// VORTEX THEME PALETTES — one entry per app theme
+// primary   = outer hex ring color
+// secondary = inner hex ring color  
+// accent    = node dots, spine emissive
+// frameCol  = side module frame emissive
+// glowCol   = side module glow panel emissive
+// haze      = atmospheric haze cylinder color
+// fog       = scene fog + background color
+// ================================================================
+const VORTEX_THEMES = {
+  default:  { primary: 0xff00cc, secondary: 0x00ccff, accent: 0xff00cc, frameCol: 0xcc00aa, glowCol: 0x99ddee, haze: 0x330044, fog: 0x0d0018 },
+  classic:  { primary: 0xf0a24d, secondary: 0xffd27a, accent: 0xf0a24d, frameCol: 0xb46a2d, glowCol: 0xddbb88, haze: 0x281200, fog: 0x120b05 },
+  bw:       { primary: 0xcccccc, secondary: 0x777777, accent: 0xdddddd, frameCol: 0x888888, glowCol: 0x999999, haze: 0x1a1a1a, fog: 0x030303 },
+  rock:     { primary: 0xff416d, secondary: 0xb835ff, accent: 0xff4b83, frameCol: 0xff416d, glowCol: 0xdd6688, haze: 0x2a0010, fog: 0x08030f },
+  memory:   { primary: 0x55aaee, secondary: 0x9988dd, accent: 0x77bbff, frameCol: 0x4499cc, glowCol: 0x6699bb, haze: 0x071428, fog: 0x050c16 },
+  custom:   { primary: 0x00ffcc, secondary: 0x00ccff, accent: 0x00ffcc, frameCol: 0x00ccaa, glowCol: 0x55aaaa, haze: 0x001a14, fog: 0x000000 },
+  chill:    { primary: 0xa975fa, secondary: 0x6b5bdb, accent: 0xa975fa, frameCol: 0x845ef7, glowCol: 0x8866cc, haze: 0x160830, fog: 0x0a0514 },
+  study:    { primary: 0xddcc00, secondary: 0xcc8800, accent: 0xeecc11, frameCol: 0xbb9900, glowCol: 0x998822, haze: 0x1a1600, fog: 0x1a1a00 },
+  phonk:    { primary: 0xcc0000, secondary: 0x880099, accent: 0xdd1111, frameCol: 0xaa1111, glowCol: 0x882222, haze: 0x280000, fog: 0x140000 }
+};
+
+function applyVortexTheme(data, scene, renderer) {
+  // For custom theme: derive colors live from the user-picked palette
+  let t;
+  if (state.theme === 'custom') {
+    const cp = THEMES.custom;
+    const hexToInt = h => parseInt(h.replace('#',''), 16);
+    const primary   = hexToInt(cp.palette[0] || '#00ffcc');
+    const secondary = hexToInt(cp.palette[1] || '#00ccff');
+    const accent    = primary;
+    const frameCol  = hexToInt(cp.palette[2] || '#009988');
+    const glowCol   = hexToInt(cp.palette[1] || '#33aaaa');
+    // Fog derived from background[0] (very dark version of picked color)
+    const fogHex    = cp.background[0] || '#000000';
+    const fog       = hexToInt(fogHex);
+    const hazeHex   = cp.background[1] || '#0a0a0a';
+    const haze      = hexToInt(hazeHex);
+    t = { primary, secondary, accent, frameCol, glowCol, haze, fog };
+  } else {
+    t = VORTEX_THEMES[state.theme] || VORTEX_THEMES.default;
+  }
+  const fogColor = new THREE.Color(t.fog);
+
+  // Fog + background
+  if (scene.fog)       scene.fog.color.set(fogColor);
+  if (scene.background) scene.background.set(fogColor);
+  renderer.setClearColor(fogColor);
+
+  // Hex rings — outer and inner
+  data.rings.forEach((r, idx) => {
+    const variation = idx % 3;
+    let outerHex = t.primary;
+    // Slight variation on outer ring for depth
+    if (variation === 1) outerHex = t.secondary;
+    else if (variation === 2) outerHex = t.primary;
+    r.outerMesh.material.emissive.setHex(outerHex);
+    r.innerMesh.material.emissive.setHex(t.secondary);
+    // Node dots
+    r.group.children.forEach(child => {
+      if (child.isMesh && !child.userData.isRing) {
+        if (child.material && child.material.emissive) {
+          child.material.emissive.setHex(t.accent);
+        }
+      }
+    });
+  });
+
+  // Side wall modules — frame + glow
+  data.modules.forEach(m => {
+    if (m.glowR.material && m.glowR.material.emissive) m.glowR.material.emissive.setHex(t.glowCol);
+    if (m.glowL.material && m.glowL.material.emissive) m.glowL.material.emissive.setHex(t.glowCol);
+    // frames
+    m.group.traverse(child => {
+      if (child.isMesh && child !== m.glowR && child !== m.glowL && child.material && child.material.emissive) {
+        child.material.emissive.setHex(t.frameCol);
+      }
+    });
+  });
+
+  // Particles — primary color
+  if (data.particles) {
+    const pColor = new THREE.Color(t.primary);
+    const sColor = new THREE.Color(t.secondary);
+    const cols = data.particles.geo.attributes.color.array;
+    for (let i = 0; i < cols.length; i += 3) {
+      const usePrimary = Math.random() < 0.65;
+      cols[i]     = usePrimary ? pColor.r : sColor.r;
+      cols[i + 1] = usePrimary ? pColor.g : sColor.g;
+      cols[i + 2] = usePrimary ? pColor.b : sColor.b;
+    }
+    data.particles.geo.attributes.color.needsUpdate = true;
+  }
+
+  // Haze cylinder
+  if (data.hazeMat) data.hazeMat.color.setHex(t.haze);
+
+  // Spine struts
+  if (data.spineMats) {
+    data.spineMats.forEach(m => m.emissive.setHex(t.secondary));
+  }
+
+  // Infinity mirror panels — tint to primary/secondary
+  if (data.infinityMats) {
+    data.infinityMats.forEach((mat, idx) => {
+      mat.color.setHex(idx % 2 === 0 ? t.primary : t.secondary);
+    });
+  }
+
+  data._lastAppliedTheme = state.theme;
+}
+
 function setupThreeScene() {
   const canvas = document.getElementById('three-canvas');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Cap: high-DPI screens would otherwise render 4x pixels
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.8;
+  renderer.toneMappingExposure = 0.72;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   state.threeVortexRenderer = renderer;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x1a0025, 0.018);
-  scene.background = new THREE.Color(0x1a0025);
+  scene.fog = new THREE.FogExp2(0x0d0018, 0.011);
+  scene.background = new THREE.Color(0x0d0018);
   state.threeVortexScene = scene;
 
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 150);
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
   camera.position.set(0, 0.3, 2);
   camera.lookAt(0, 0.3, -100);
   state.threeVortexCamera = camera;
@@ -3939,7 +4118,7 @@ function setupThreeScene() {
   const renderScene = new RenderPass(scene, camera);
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.9, 0.75, 0.15
+    0.75, 0.40, 0.25
   );
   const composer = new EffectComposer(renderer);
   composer.addPass(renderScene);
@@ -3968,6 +4147,8 @@ function setupThreeScene() {
   // ================================================================
   // GLOSSY MIRROR FLOOR & CEILING
   // ================================================================
+  let bgReflector; // Declare early for mutual visibility hiding during render passes
+
   const floorGeo = new THREE.PlaneGeometry(10, tunnelLen + 20, 1, 1);
   const floorReflector = new Reflector(floorGeo, {
     clipBias: 0.003,
@@ -3975,6 +4156,14 @@ function setupThreeScene() {
     textureHeight: 1024,
     color: 0x110218
   });
+  
+  const oldFloorRender = floorReflector.onBeforeRender;
+  floorReflector.onBeforeRender = function(renderer, scene, camera) {
+    if (bgReflector) bgReflector.visible = false;
+    oldFloorRender.call(this, renderer, scene, camera);
+    if (bgReflector) bgReflector.visible = true;
+  };
+
   floorReflector.rotation.x = -Math.PI / 2;
   floorReflector.position.set(0, -hexRadius, -(tunnelLen / 2));
   scene.add(floorReflector);
@@ -3986,6 +4175,14 @@ function setupThreeScene() {
     textureHeight: 1024,
     color: 0x110218
   });
+
+  const oldCeilRender = ceilReflector.onBeforeRender;
+  ceilReflector.onBeforeRender = function(renderer, scene, camera) {
+    if (bgReflector) bgReflector.visible = false;
+    oldCeilRender.call(this, renderer, scene, camera);
+    if (bgReflector) bgReflector.visible = true;
+  };
+
   ceilReflector.rotation.x = Math.PI / 2;
   ceilReflector.position.set(0, hexRadius, -(tunnelLen / 2));
   scene.add(ceilReflector);
@@ -3993,21 +4190,24 @@ function setupThreeScene() {
   // ================================================================
   // SPINE STRUTS
   // ================================================================
-  const spineGeo = new THREE.BoxGeometry(0.05, 0.05, tunnelLen + 20);
+  const spineGeo = new THREE.BoxGeometry(0.04, 0.04, tunnelLen + 20);
   const spineMat = new THREE.MeshStandardMaterial({
     color: 0x000000,
-    emissive: new THREE.Color(0x44ddff),
-    emissiveIntensity: 0.9,
-    roughness: 0.1,
-    metalness: 0.9
+    emissive: new THREE.Color(0x22aadd),
+    emissiveIntensity: 0.55,
+    roughness: 0.15,
+    metalness: 0.85
   });
   const topSpine = new THREE.Mesh(spineGeo, spineMat);
   topSpine.position.set(0, hexRadius, -(tunnelLen / 2));
   scene.add(topSpine);
 
-  const botSpine = new THREE.Mesh(spineGeo, spineMat.clone());
+  const botSpineMat = spineMat.clone();
+  const botSpine = new THREE.Mesh(spineGeo, botSpineMat);
   botSpine.position.set(0, -hexRadius, -(tunnelLen / 2));
   scene.add(botSpine);
+
+  state.threeVortexData.spineMats = [spineMat, botSpineMat];
 
   // ================================================================
   // HEX RINGS
@@ -4017,20 +4217,23 @@ function setupThreeScene() {
     const ringGroup = new THREE.Group();
     ringGroup.position.z = zPos;
 
-    const outer = createThickHexRing(hexRadius, 0.08, 0xff00cc, 1.4);
+    // Alternate outer ring color between magenta and deep violet for variety
+    const outerColor = (i % 3 === 0) ? 0xff00cc : (i % 3 === 1) ? 0xdd00ff : 0xff00aa;
+    const outer = createThickHexRing(hexRadius, 0.07, outerColor, 1.1);
     ringGroup.add(outer);
 
-    const inner = createThickHexRing(hexRadius - 0.3, 0.06, 0x00ccff, 1.1);
+    const inner = createThickHexRing(hexRadius - 0.28, 0.05, 0x00ccff, 0.85);
     ringGroup.add(inner);
 
+    // Corner node accent dots — smaller and subtler
     const nodeMat = new THREE.MeshStandardMaterial({
       color: 0x000000,
       emissive: new THREE.Color(0xff00cc),
-      emissiveIntensity: 1.8,
+      emissiveIntensity: 1.2,
       roughness: 0.1,
       metalness: 0.9
     });
-    const nodeGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
+    const nodeGeo = new THREE.BoxGeometry(0.09, 0.09, 0.09);
     
     const nodeTop = new THREE.Mesh(nodeGeo, nodeMat);
     nodeTop.position.set(0, hexRadius, 0);
@@ -4045,7 +4248,9 @@ function setupThreeScene() {
     state.threeVortexData.rings.push({
       group: ringGroup,
       outerMesh: outer,
-      innerMesh: inner
+      innerMesh: inner,
+      nodeMats: [nodeMat, nodeBot.material],
+      baseScale: 1.0
     });
   }
 
@@ -4116,31 +4321,88 @@ function setupThreeScene() {
   hazeMesh.rotation.x = Math.PI / 2;
   hazeMesh.position.set(0, 0, -(tunnelLen / 2));
   scene.add(hazeMesh);
+  state.threeVortexData.hazeMat = hazeMat; // store ref for theme hot-swap
 
   // ================================================================
-  // FLOATING SQUARE PARTICLES
+  // FLOATING PARTICLES — THREE.Points for performance
   // ================================================================
-  const pCount = 200;
-  const particles = [];
-  const pMatMag  = new THREE.MeshBasicMaterial({ color: 0xff44cc, transparent: true, opacity: 0.7, depthWrite: false });
-  const pMatCyan = new THREE.MeshBasicMaterial({ color: 0x44ccff, transparent: true, opacity: 0.5, depthWrite: false });
-  const pGeo = new THREE.PlaneGeometry(1, 1);
+  const pCount = 150;
+  const pPositions = new Float32Array(pCount * 3);
+  const pColors    = new Float32Array(pCount * 3);
+  const pSpeeds    = new Float32Array(pCount);
+  const magenta = new THREE.Color(0xff44cc);
+  const cyan    = new THREE.Color(0x44ddff);
 
   for (let i = 0; i < pCount; i++) {
-    const isMag = Math.random() < 0.7;
-    const mesh = new THREE.Mesh(pGeo, isMag ? pMatMag : pMatCyan);
-    const size = 0.04 + Math.random() * 0.08;
-    mesh.scale.set(size, size, 1);
-    mesh.position.set(
-      (Math.random() - 0.5) * hexRadius * 2.2,
-      (Math.random() - 0.5) * hexRadius * 2,
-      -Math.random() * tunnelLen
-    );
-    mesh.userData = { speed: 0.02 + Math.random() * 0.03, rotSpeed: (Math.random() - 0.5) * 0.008, angle: Math.random() * Math.PI };
-    scene.add(mesh);
-    particles.push(mesh);
+    pPositions[i * 3]     = (Math.random() - 0.5) * hexRadius * 2.4;
+    pPositions[i * 3 + 1] = (Math.random() - 0.5) * hexRadius * 2.0;
+    pPositions[i * 3 + 2] = -Math.random() * tunnelLen;
+    const col = Math.random() < 0.65 ? magenta : cyan;
+    pColors[i * 3]     = col.r;
+    pColors[i * 3 + 1] = col.g;
+    pColors[i * 3 + 2] = col.b;
+    pSpeeds[i] = 0.018 + Math.random() * 0.028;
   }
-  state.threeVortexData.particles = particles;
+
+  const pGeo = new THREE.BufferGeometry();
+  pGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+  pGeo.setAttribute('color',    new THREE.BufferAttribute(pColors,    3));
+
+  const pMat = new THREE.PointsMaterial({
+    size: 0.055,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.65,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true
+  });
+
+  const particleSystem = new THREE.Points(pGeo, pMat);
+  scene.add(particleSystem);
+  state.threeVortexData.particles = { system: particleSystem, geo: pGeo, speeds: pSpeeds, count: pCount, tunnelLen };
+
+  // ================================================================
+  // INFINITY MIRROR WALL PANELS: top / mid / bottom × left / right
+  // ================================================================
+  const panelW    = 2.5;           // local width  → world-Z extent after Y rotation
+  const panelH    = 1.02;          // local height → world-Y extent
+  const panelSets = 5;             // how many sets along the tunnel
+  const panelStep = tunnelLen / panelSets;
+  const panelYs   = [hexRadius * 0.50, 0, -hexRadius * 0.50];  // top / mid / bottom
+  const ipGroups  = [];
+  const ipMats    = [];
+
+  for (let si = 0; si < panelSets; si++) {
+    const setGrp = new THREE.Group();
+    setGrp.position.z = -(si * panelStep + panelStep * 0.5);
+
+    panelYs.forEach(yp => {
+      // Right wall: rotate -90° around Y so panel face points toward -X (into tunnel)
+      const rp = createInfinityMirrorPanel(panelW, panelH);
+      rp.group.position.set(hexRadius - 0.08, yp, 0);
+      rp.group.rotation.y = -Math.PI / 2;
+      setGrp.add(rp.group);
+      rp.mats.forEach(m => ipMats.push(m));
+
+      // Left wall: rotate +90° around Y so panel face points toward +X (into tunnel)
+      const lp = createInfinityMirrorPanel(panelW, panelH);
+      lp.group.position.set(-(hexRadius - 0.08), yp, 0);
+      lp.group.rotation.y = Math.PI / 2;
+      setGrp.add(lp.group);
+      lp.mats.forEach(m => ipMats.push(m));
+    });
+
+    scene.add(setGrp);
+    ipGroups.push(setGrp);
+  }
+
+  state.threeVortexData.infinityPanels = ipGroups;
+  state.threeVortexData.infinityMats   = ipMats;
+
+
+
+  // Background mirror removed to eliminate the center reflection artifact.
 }
 
 function resizeThreeVortex() {
@@ -4172,18 +4434,25 @@ function updateThreeVortexAudio() {
 
   const now = performance.now();
 
+  // ── Hot-swap theme colors whenever the user switches theme ────────
+  if (data._lastAppliedTheme !== state.theme) {
+    applyVortexTheme(data, state.threeVortexScene, state.threeVortexRenderer);
+  }
+
+  // ── Frequency energy (tuned for 0.7 sensitivity) ──────────────────
   let rawBass   = Math.min(getEnergyForHz(0,    200)   * state.sensitivity, 1.2);
   let rawLowMid = Math.min(getEnergyForHz(200,  800)   * state.sensitivity, 1.2);
   let rawMid    = Math.min(getEnergyForHz(800,  2000)  * state.sensitivity, 1.2);
   let rawHigh   = Math.min(getEnergyForHz(2000, 10000) * state.sensitivity, 1.2);
   let rawAmp    = Math.min(getEnergyForHz(0,    10000) * state.sensitivity, 1.2);
 
-  // Dynamic Audio AGC (normalize quiet mic and loud file sources smoothly)
-  if (!data.runningAmpAverage) data.runningAmpAverage = 0.25;
+  // ── Dynamic AGC — normalises quiet mic vs loud file sources ───────
+  if (!data.runningAmpAverage) data.runningAmpAverage = 0.18;
   if (data.smoothedAmplitude > 0.005) {
-    data.runningAmpAverage = data.runningAmpAverage * 0.99 + data.smoothedAmplitude * 0.01;
+    data.runningAmpAverage = data.runningAmpAverage * 0.992 + data.smoothedAmplitude * 0.008;
   }
-  const dynamicGain = Math.min(Math.max(0.25 / data.runningAmpAverage, 0.45), 2.5);
+  // Gain range wider so 0.7 sensitivity still drives full visual range
+  const dynamicGain = Math.min(Math.max(0.22 / data.runningAmpAverage, 0.6), 3.2);
 
   rawBass   *= dynamicGain;
   rawLowMid *= dynamicGain;
@@ -4191,82 +4460,120 @@ function updateThreeVortexAudio() {
   rawHigh   *= dynamicGain;
   rawAmp    *= dynamicGain;
 
-  // Response coefficients tuned for snappy and responsive feedback
-  data.smoothedBass      = data.smoothedBass      * 0.82 + rawBass   * 0.18;
-  data.smoothedLowMid    = data.smoothedLowMid    * 0.78 + rawLowMid * 0.22;
-  data.smoothedMid       = data.smoothedMid       * 0.75 + rawMid    * 0.25;
-  data.smoothedHigh      = data.smoothedHigh      * 0.68 + rawHigh   * 0.32;
-  data.smoothedAmplitude = data.smoothedAmplitude * 0.80 + rawAmp    * 0.20;
+  // ── Smoothing — snappier response for reactive feel ───────────────
+  data.smoothedBass      = data.smoothedBass      * 0.78 + rawBass   * 0.22;
+  data.smoothedLowMid    = data.smoothedLowMid    * 0.74 + rawLowMid * 0.26;
+  data.smoothedMid       = data.smoothedMid       * 0.70 + rawMid    * 0.30;
+  data.smoothedHigh      = data.smoothedHigh      * 0.62 + rawHigh   * 0.38;
+  data.smoothedAmplitude = data.smoothedAmplitude * 0.78 + rawAmp    * 0.22;
 
-  if (rawBass > data.smoothedBass * 1.4 && now - data.lastBeatTime > 200) {
-    data.cameraKick = 0.15;
+  // ── Beat detection → camera kick ─────────────────────────────────
+  if (rawBass > data.smoothedBass * 1.35 && now - data.lastBeatTime > 180) {
+    data.cameraKick = 0.22;
     data.lastBeatTime = now;
   }
 
-  data.flySpeed   = 0.06 + data.smoothedAmplitude * 0.14 + data.cameraKick;
-  data.cameraKick *= 0.85;
+  // ── Tunnel fly speed — audio driven ──────────────────────────────
+  // base 0.06, amplitude pushes up to +0.22, beat kick adds burst
+  // At 0.7 sensitivity this gives a satisfying 0.06–0.30 range
+  const themeCfg = THEMES[state.theme] || THEMES.classic;
+  const themeSpeedMult = themeCfg.animationSpeed || 0.6; // phonk=1.5, study=0.2 etc
+  data.flySpeed  = (0.05 + data.smoothedAmplitude * 0.22 + data.cameraKick) * (0.6 + themeSpeedMult * 0.8);
+  data.cameraKick *= 0.82;
 
-  // Cap bloom at 1.65 to prevent extreme blowout while keeping visualizer neon bright
-  data.bloomPass.strength = Math.min(0.85 + data.smoothedLowMid * 0.8, 1.65);
+  // ── Bloom — rises strongly with energy, theme glowIntensity scales peak ─
+  const themeGlowMult = Math.min(themeCfg.glowIntensity || 0.8, 1.5);
+  data.bloomPass.strength = Math.min(
+    0.60 + data.smoothedLowMid * 0.35 * themeGlowMult + data.smoothedBass * 0.18 * themeGlowMult,
+    1.05
+  );
 
-  // Wave propagation history buffers
+  // ── Wave history buffers (propagate bass/mid as wave down tunnel) ─
   if (!data.bassHistory) {
     data.bassHistory = new Array(data.rings.length).fill(0);
     data.midHistory  = new Array(data.modules.length).fill(0);
   }
   data.bassHistory.unshift(data.smoothedBass);
   data.bassHistory.pop();
-
   data.midHistory.unshift(data.smoothedMid);
   data.midHistory.pop();
 
   const t = now * 0.001;
-  // Cinematic camera sway + Z-axis roll for a smooth flying sensation
-  state.threeVortexCamera.position.x = Math.sin(t * 0.4) * 0.06 * (0.3 + data.smoothedBass);
-  state.threeVortexCamera.position.y = 0.3 + Math.cos(t * 0.3) * 0.04 * (0.3 + data.smoothedBass);
-  state.threeVortexCamera.rotation.z = Math.sin(t * 0.25) * 0.015;
+
+  // ── Cinematic camera sway ─────────────────────────────────────────
+  const swayX = Math.sin(t * 0.35) * 0.055 + Math.sin(t * 0.11) * 0.02;
+  const swayY = Math.cos(t * 0.28) * 0.04  + Math.cos(t * 0.17) * 0.015;
+  state.threeVortexCamera.position.x = swayX * (0.4 + data.smoothedBass * 0.7);
+  state.threeVortexCamera.position.y = 0.25 + swayY * (0.4 + data.smoothedBass * 0.7);
+  state.threeVortexCamera.rotation.z = Math.sin(t * 0.22) * 0.014 * (1 + data.smoothedBass * 0.6);
 
   const camZ     = state.threeVortexCamera.position.z;
   const wrapDist = data.ringCount * data.ringSpacing;
 
-  // Pulse rings as a wave propagating down the tunnel
+  // ── Hex rings — fly + scale pulse + emissive intensity glow ───────
   data.rings.forEach((r, idx) => {
-    r.group.position.z    += data.flySpeed;
+    r.group.position.z += data.flySpeed;
     const ringBass = data.bassHistory[idx] || 0;
-    const currentScale = 1.0 + ringBass * 0.08;
-    r.group.scale.set(currentScale, currentScale, 1);
-    if (r.group.position.z > camZ + 2) {
-      r.group.position.z    -= wrapDist;
-    }
+    // Scale pulse: more reactive — up to 12% expansion on beat
+    const targetScale = 1.0 + ringBass * 0.12;
+    r.baseScale = (r.baseScale || 1.0) * 0.85 + targetScale * 0.15;
+    r.group.scale.set(r.baseScale, r.baseScale, 1);
+    // Emissive glow surge on beat — kept moderate to preserve color fidelity
+    const glowLevel = Math.min(0.75 + ringBass * 0.75, 1.4);
+    if (r.outerMesh.material) r.outerMesh.material.emissiveIntensity = glowLevel;
+    if (r.innerMesh.material) r.innerMesh.material.emissiveIntensity = Math.min(0.6 + ringBass * 0.65, 1.2);
+    if (r.group.position.z > camZ + 2) r.group.position.z -= wrapDist;
   });
 
-  // Pulse side modules as waves running down the corridor walls
+  // ── Side modules — fly + glow pulse ──────────────────────────────
   data.modules.forEach((m, idx) => {
     m.group.position.z += data.flySpeed;
     if (m.group.position.z > camZ + 2) m.group.position.z -= wrapDist;
-    
     const modMid = data.midHistory[idx] || 0;
-    const panelEmissive = 1.2 + modMid * 1.5;
-    m.glowR.material.emissiveIntensity = panelEmissive;
-    m.glowL.material.emissiveIntensity = panelEmissive;
+    // Glow surges moderately — preserves color without washing to white
+    const targetGlow = 0.75 + modMid * 0.75 + data.smoothedBass * 0.28;
+    m.glowR.material.emissiveIntensity = Math.min(targetGlow, 1.5);
+    m.glowL.material.emissiveIntensity = Math.min(targetGlow, 1.5);
   });
 
-  const particleBoost = data.smoothedHigh * 0.12;
-  data.particles.forEach(p => {
-    p.position.z += p.userData.speed + particleBoost + data.flySpeed;
-    p.userData.angle += p.userData.rotSpeed;
-    p.lookAt(state.threeVortexCamera.position);
-    p.rotateZ(p.userData.angle);
-    if (p.position.z > camZ + 1) {
-      p.position.z -= wrapDist;
-      p.position.x  = (Math.random() - 0.5) * 6.0;
-      p.position.y  = (Math.random() - 0.5) * 6.0;
+  // ── Particles — fly + opacity pulse ──────────────────────────────
+  const pData    = data.particles;
+  const positions = pData.geo.attributes.position.array;
+  const particleBoost = data.smoothedHigh * 0.10;
+  const pWrapDist = pData.tunnelLen;
+  for (let i = 0; i < pData.count; i++) {
+    positions[i * 3 + 2] += pData.speeds[i] + particleBoost + data.flySpeed * 0.55;
+    if (positions[i * 3 + 2] > camZ + 1) {
+      positions[i * 3 + 2] -= pWrapDist;
+      positions[i * 3]     = (Math.random() - 0.5) * 6.2;
+      positions[i * 3 + 1] = (Math.random() - 0.5) * 5.6;
     }
-  });
+  }
+  pData.geo.attributes.position.needsUpdate = true;
+  pData.system.material.opacity = 0.38 + data.smoothedHigh * 0.42;
+
+  // ── Infinity mirror panels ────────────────────────────────────────
+  if (data.infinityPanels) {
+    data.infinityPanels.forEach(g => {
+      g.position.z += data.flySpeed;
+      if (g.position.z > camZ + 2) g.position.z -= wrapDist;
+    });
+    const infPulse = Math.min(0.65 + data.smoothedMid * 0.60 + data.smoothedBass * 0.30, 1.6);
+    data.infinityMats.forEach(mat => {
+      mat.opacity = Math.min(mat.userData.baseOpacity * infPulse, 0.95);
+    });
+  }
 }
+
+// Target 30fps for vortex — halves GPU load vs uncapped 60fps, invisible on a slow tunnel
+const _VORTEX_FRAME_MS = 1000 / 30;
+let _vortexLastFrame = 0;
 
 function renderThreeVortex() {
   if (!state.threeVortexComposer || !state.threeVortexData) return;
+  const now = performance.now();
+  if (now - _vortexLastFrame < _VORTEX_FRAME_MS) return; // skip frame — stay at ~30fps
+  _vortexLastFrame = now;
   updateThreeVortexAudio();
   state.threeVortexComposer.render();
 }
