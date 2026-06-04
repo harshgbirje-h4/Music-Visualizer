@@ -3038,7 +3038,7 @@ async function requestPip(isAuto = false) {
           #canvas-container { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; background: var(--bg); overflow: hidden; }
           canvas { width: 100%; height: 100%; display: block; object-fit: cover; transform-origin: center center; }
           #pip-controls { position: absolute; bottom: 0; left: 0; right: 0; z-index: 10; padding: 12px; background: rgba(15, 15, 15, 0.85); backdrop-filter: blur(12px); display: flex; gap: 8px; align-items: center; justify-content: center; border-top: 1px solid var(--border); flex-wrap: wrap; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease; }
-          select, button { background: rgba(30, 30, 30, 0.6); color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; cursor: pointer; outline: none; transition: all 0.2s; }
+          select, button { background: rgba(30, 30, 30, 0.6); color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; cursor: pointer; outline: none; transition: all 0.2s; flex-shrink: 0; }
           select:hover, button:hover { border-color: var(--acc1); background: rgba(40, 40, 40, 0.8); }
           button { font-weight: bold; color: var(--acc1); border-color: var(--acc1); }
           option { background: var(--bg); color: var(--text); font-family: monospace; }
@@ -3070,7 +3070,7 @@ async function requestPip(isAuto = false) {
             <option value="phonk" ${state.theme === 'phonk' ? 'selected' : ''}>THEME: PHONK</option>
             <option value="custom" ${state.theme === 'custom' ? 'selected' : ''}>THEME: CUSTOM</option>
           </select>
-          <div style="display:flex;align-items:center;gap:4px;">
+          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
             <label for="pip-sens" style="font-size:10px;">SENS</label>
             <input type="range" id="pip-sens" min="0.2" max="3.0" step="0.1" value="${state.sensitivity}" />
           </div>
