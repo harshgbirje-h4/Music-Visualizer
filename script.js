@@ -1065,14 +1065,27 @@ function renderLoop(fromWorker = false) {
     
     // Update UI panel colors to match Auto Color
     const hue = Math.floor(state.colorHue);
-    document.body.style.setProperty('--acc1', `hsl(${hue}, 100%, 65%)`);
-    document.body.style.setProperty('--glow', `hsla(${hue}, 100%, 65%, 0.4)`);
-    document.body.style.setProperty('--glow-hi', `hsla(${hue}, 100%, 65%, 0.7)`);
+    
+    const setVars = (style) => {
+      style.setProperty('--acc1', `hsl(${hue}, 100%, 65%)`);
+      style.setProperty('--acc2', `hsl(${(hue + 30) % 360}, 100%, 75%)`);
+      style.setProperty('--acc3', `hsl(${hue}, 80%, 40%)`);
+      style.setProperty('--glow', `hsla(${hue}, 100%, 65%, 0.4)`);
+      style.setProperty('--glow-hi', `hsla(${hue}, 100%, 65%, 0.7)`);
+      style.setProperty('--border', `hsla(${hue}, 100%, 65%, 0.3)`);
+      style.setProperty('--dim', `hsl(${hue}, 60%, 65%)`);
+      style.setProperty('--text', `hsl(${hue}, 20%, 95%)`);
+      style.setProperty('--panel', `hsla(${hue}, 40%, 8%, 0.85)`);
+      style.setProperty('--panel-strong', `hsla(${hue}, 40%, 8%, 0.95)`);
+      style.setProperty('--bg', `hsl(${hue}, 50%, 3%)`);
+      style.setProperty('--bg-soft', `hsl(${hue}, 50%, 6%)`);
+    };
+
+    setVars(document.body.style);
     
     // Also sync the PiP window UI if active
     if (state.pipWindow) {
-      state.pipWindow.document.body.style.setProperty('--acc1', `hsl(${hue}, 100%, 65%)`);
-      state.pipWindow.document.body.style.setProperty('--glow-hi', `hsla(${hue}, 100%, 65%, 0.7)`);
+      setVars(state.pipWindow.document.body.style);
     }
   }
 
@@ -3179,12 +3192,8 @@ function applyTheme(themeName, silent = false) {
   document.body.dataset.theme = nextTheme;
 
   if (nextTheme !== 'custom') {
-    document.body.style.removeProperty('--acc1');
-    document.body.style.removeProperty('--glow');
-    document.body.style.removeProperty('--glow-hi');
-    document.body.style.removeProperty('--bg');
-    document.body.style.removeProperty('--bg-soft');
-    document.body.style.removeProperty('--panel');
+    const style = document.body.style;
+    ['--acc1', '--acc2', '--acc3', '--glow', '--glow-hi', '--border', '--dim', '--text', '--panel', '--panel-strong', '--bg', '--bg-soft'].forEach(prop => style.removeProperty(prop));
   } else if (!silent) {
     updateCustomThemeColor(THEMES.custom.glowColor);
   }
@@ -3679,8 +3688,8 @@ function handleUi() {
       applyTheme(state.theme, false);
       if (state.pipWindow) {
         // Also reset PiP window UI colors
-        state.pipWindow.document.body.style.removeProperty('--acc1');
-        state.pipWindow.document.body.style.removeProperty('--glow-hi');
+        const pipStyle = state.pipWindow.document.body.style;
+        ['--acc1', '--acc2', '--acc3', '--glow', '--glow-hi', '--border', '--dim', '--text', '--panel', '--panel-strong', '--bg', '--bg-soft'].forEach(prop => pipStyle.removeProperty(prop));
       }
     }
     
