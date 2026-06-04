@@ -417,7 +417,7 @@ function hexToRgb(hex) {
 }
 
 function getThemeGlowRGB(theme) {
-  if (state.autoCycle && state.theme !== 'bw') {
+  if (state.autoCycle) {
     const h = state.colorHue;
     const s = 1;
     const l = 0.68;
@@ -441,7 +441,7 @@ function getThemeGlowRGB(theme) {
 }
 
 function getThemeGlowColor(theme) {
-  if (state.autoCycle && state.theme !== 'bw') {
+  if (state.autoCycle) {
     return `hsla(${state.colorHue}, 100%, 68%, 1)`;
   }
   return theme.glowColor;
@@ -636,7 +636,7 @@ function mix(a, b, t) {
 
 function paletteColor(t, alpha = 1) {
   const theme = themeConfig();
-  if (state.autoCycle && state.theme !== 'bw') {
+  if (state.autoCycle) {
     const hue = (state.colorHue + t * 180) % 360;
     return `hsla(${hue}, 100%, 68%, ${alpha})`;
   }
@@ -1215,10 +1215,10 @@ function drawBackground(c, width, height) {
   const c3 = hexToRgb(theme.background[2]);
 
   if (state.mode === 'vortex') {
-    const topGlow = state.autoCycle && state.theme !== 'bw'
+    const topGlow = state.autoCycle
       ? paletteColor(0.12, 0.2)
       : `rgba(${c1.r}, ${c1.g}, ${c1.b}, 0.18)`;
-    const midGlow = state.autoCycle && state.theme !== 'bw'
+    const midGlow = state.autoCycle
       ? paletteColor(0.42, 0.16)
       : `rgba(${c2.r}, ${c2.g}, ${c2.b}, 0.12)`;
     bg.addColorStop(0, topGlow);
@@ -1429,7 +1429,7 @@ function drawAmbientOverlay(c, width, height) {
       continue;
     }
     c.save();
-    if (theme.label === 'BLACK & WHITE') {
+    if (theme.label === 'BLACK & WHITE' && !state.autoCycle) {
       c.fillStyle = `rgba(255, 255, 255, ${particle.alpha * 0.55})`;
       c.fillRect(particle.x, particle.y, particle.size, particle.size * 3);
     } else {
@@ -1541,7 +1541,7 @@ function drawBars(c, width, height) {
   const maxHeight = height * (theme.road ? 0.26 : 0.38);
   const cornerRadius = theme.label === 'BLACK & WHITE' ? 0 : Math.min(7, barWidth * 0.48);
 
-  const isBW = theme.label === 'BLACK & WHITE';
+  const isBW = theme.label === 'BLACK & WHITE' && !state.autoCycle;
 
   c.save();
 
@@ -1741,7 +1741,7 @@ function drawRadialWave(c, cx, cy, radius, theme) {
     c.restore();
   };
 
-  const isBW = theme.label === 'BLACK & WHITE';
+  const isBW = theme.label === 'BLACK & WHITE' && !state.autoCycle;
   const baseColor = isBW ? 'rgba(255, 255, 255, 1)' : spectralLinear(c, cx - radius, cy, cx + radius, cy, 1);
   const glowColor = isBW ? 'rgba(255, 255, 255, 1)' : getThemeGlowColor(theme);
 
@@ -1751,7 +1751,7 @@ function drawRadialWave(c, cx, cy, radius, theme) {
 }
 
 function drawCenterOrb(c, cx, cy, radius, theme) {
-  const isBW = theme.label === 'BLACK & WHITE';
+  const isBW = theme.label === 'BLACK & WHITE' && !state.autoCycle;
   const glowRadius = radius * (2.4 + state.energySmoothed * 2.0);
 
   const orb = c.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
@@ -1807,7 +1807,7 @@ function drawWave(c, width, height) {
     });
   }
 
-  const isBW = theme.label === 'BLACK & WHITE';
+  const isBW = theme.label === 'BLACK & WHITE' && !state.autoCycle;
 
   c.save();
   if (!isBW) {
@@ -2829,7 +2829,14 @@ function renderPip(ctxToRender, width, height) {
   }
 
   // Draw the main visualizer canvas (where vortex geometric rings / neon strokes are rendered)
-  drawImageCover(ctxToRender, canvas, width, height);
+  if (isVortex) {
+    const threeCanvas = document.getElementById('three-canvas');
+    if (threeCanvas) {
+      drawImageCover(ctxToRender, threeCanvas, width, height);
+    }
+  } else {
+    drawImageCover(ctxToRender, canvas, width, height);
+  }
 }
 
 function syncPopup() {
@@ -3627,6 +3634,11 @@ function handleUi() {
     state.autoCycle = toggleAutocycle.checked;
     const bcCanvas = document.getElementById('butterchurn-canvas');
     if (bcCanvas) updateMilkdropFilter(bcCanvas);
+    
+    // Force theme reload for Vortex mode when toggling
+    if (state.threeVortexData) {
+      state.threeVortexData._lastAppliedTheme = null;
+    }
 
     if (state.pipWindow) {
       const pipAuto = state.pipWindow.document.getElementById('pip-autocolor');
@@ -4009,17 +4021,19 @@ function applyVortexTheme(data, scene, renderer) {
   // For custom theme: derive colors live from the user-picked palette
   let t;
   if (state.theme === 'custom') {
-    const cp = THEMES.custom;
-    const hexToInt = h => parseInt(h.replace('#',''), 16);
-    const primary   = hexToInt(cp.palette[0] || '#00ffcc');
-    const secondary = hexToInt(cp.palette[1] || '#00ccff');
+    const cp = THEMES.custom || {};
+    const pal = cp.palette || [];
+    const hexToInt = h => parseInt((h || '#000000').replace('#',''), 16);
+    const primary   = hexToInt(pal[0] || '#00ffcc');
+    const secondary = hexToInt(pal[1] || '#00ccff');
     const accent    = primary;
-    const frameCol  = hexToInt(cp.palette[2] || '#009988');
-    const glowCol   = hexToInt(cp.palette[1] || '#33aaaa');
+    const frameCol  = hexToInt(pal[2] || '#009988');
+    const glowCol   = hexToInt(pal[1] || '#33aaaa');
     // Fog derived from background[0] (very dark version of picked color)
-    const fogHex    = cp.background[0] || '#000000';
+    const bg = cp.background || [];
+    const fogHex    = bg[0] || '#000000';
     const fog       = hexToInt(fogHex);
-    const hazeHex   = cp.background[1] || '#0a0a0a';
+    const hazeHex   = bg[1] || '#0a0a0a';
     const haze      = hexToInt(hazeHex);
     t = { primary, secondary, accent, frameCol, glowCol, haze, fog };
   } else {
@@ -4098,7 +4112,7 @@ function applyVortexTheme(data, scene, renderer) {
 function setupThreeScene() {
   const canvas = document.getElementById('three-canvas');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Cap: high-DPI screens would otherwise render 4x pixels
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0)); // Cap for performance
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.72;
@@ -4147,45 +4161,22 @@ function setupThreeScene() {
   // ================================================================
   // GLOSSY MIRROR FLOOR & CEILING
   // ================================================================
-  let bgReflector; // Declare early for mutual visibility hiding during render passes
-
   const floorGeo = new THREE.PlaneGeometry(10, tunnelLen + 20, 1, 1);
-  const floorReflector = new Reflector(floorGeo, {
-    clipBias: 0.003,
-    textureWidth: 1024,
-    textureHeight: 1024,
-    color: 0x110218
+  const floorMat = new THREE.MeshStandardMaterial({
+    color: 0x05010a,
+    roughness: 0.15,
+    metalness: 0.85
   });
   
-  const oldFloorRender = floorReflector.onBeforeRender;
-  floorReflector.onBeforeRender = function(renderer, scene, camera) {
-    if (bgReflector) bgReflector.visible = false;
-    oldFloorRender.call(this, renderer, scene, camera);
-    if (bgReflector) bgReflector.visible = true;
-  };
+  const floorPlane = new THREE.Mesh(floorGeo, floorMat);
+  floorPlane.rotation.x = -Math.PI / 2;
+  floorPlane.position.set(0, -hexRadius, -(tunnelLen / 2));
+  scene.add(floorPlane);
 
-  floorReflector.rotation.x = -Math.PI / 2;
-  floorReflector.position.set(0, -hexRadius, -(tunnelLen / 2));
-  scene.add(floorReflector);
-
-  const ceilGeo = new THREE.PlaneGeometry(10, tunnelLen + 20, 1, 1);
-  const ceilReflector = new Reflector(ceilGeo, {
-    clipBias: 0.003,
-    textureWidth: 1024,
-    textureHeight: 1024,
-    color: 0x110218
-  });
-
-  const oldCeilRender = ceilReflector.onBeforeRender;
-  ceilReflector.onBeforeRender = function(renderer, scene, camera) {
-    if (bgReflector) bgReflector.visible = false;
-    oldCeilRender.call(this, renderer, scene, camera);
-    if (bgReflector) bgReflector.visible = true;
-  };
-
-  ceilReflector.rotation.x = Math.PI / 2;
-  ceilReflector.position.set(0, hexRadius, -(tunnelLen / 2));
-  scene.add(ceilReflector);
+  const ceilPlane = new THREE.Mesh(floorGeo, floorMat.clone());
+  ceilPlane.rotation.x = Math.PI / 2;
+  ceilPlane.position.set(0, hexRadius, -(tunnelLen / 2));
+  scene.add(ceilPlane);
 
   // ================================================================
   // SPINE STRUTS
@@ -4429,7 +4420,7 @@ function getEnergyForHz(startHz, endHz) {
 }
 
 function updateThreeVortexAudio() {
-  const data = state.threeVortexData;
+const data = state.threeVortexData;
   if (!data) return;
 
   const now = performance.now();
@@ -4437,6 +4428,48 @@ function updateThreeVortexAudio() {
   // ── Hot-swap theme colors whenever the user switches theme ────────
   if (data._lastAppliedTheme !== state.theme) {
     applyVortexTheme(data, state.threeVortexScene, state.threeVortexRenderer);
+    data._lastAppliedTheme = state.theme;
+  }
+
+  // --- Auto Color Cycle for Vortex Mode ---
+  if (state.autoCycle) {
+    const hue = state.colorHue / 360;
+    const colorPrimary = new THREE.Color().setHSL(hue, 1.0, 0.5);
+    const colorSecondary = new THREE.Color().setHSL((hue + 0.1) % 1.0, 1.0, 0.5);
+    const colorAccent = new THREE.Color().setHSL((hue + 0.05) % 1.0, 1.0, 0.5);
+    
+    data.rings.forEach((r, idx) => {
+      const variation = idx % 3;
+      let outerHex = colorPrimary.getHex();
+      if (variation === 1) outerHex = colorSecondary.getHex();
+      else if (variation === 2) outerHex = colorPrimary.getHex();
+      
+      if (r.outerMesh.material && r.outerMesh.material.emissive) r.outerMesh.material.emissive.setHex(outerHex);
+      if (r.innerMesh.material && r.innerMesh.material.emissive) r.innerMesh.material.emissive.setHex(colorSecondary.getHex());
+    });
+
+    data.modules.forEach(m => {
+      if (m.glowR.material && m.glowR.material.emissive) m.glowR.material.emissive.setHex(colorSecondary.getHex());
+      if (m.glowL.material && m.glowL.material.emissive) m.glowL.material.emissive.setHex(colorSecondary.getHex());
+      m.group.traverse(child => {
+        if (child.isMesh && child !== m.glowR && child !== m.glowL && child.material && child.material.emissive) {
+          child.material.emissive.setHex(colorAccent.getHex());
+        }
+      });
+    });
+
+    if (data.particles) {
+      const cols = data.particles.geo.attributes.color.array;
+      for (let i = 0; i < cols.length; i += 3) {
+        // Interleave primary and secondary colors for particles
+        const usePrimary = (i / 3) % 2 === 0;
+        const targetColor = usePrimary ? colorPrimary : colorSecondary;
+        cols[i]     = targetColor.r;
+        cols[i + 1] = targetColor.g;
+        cols[i + 2] = targetColor.b;
+      }
+      data.particles.geo.attributes.color.needsUpdate = true;
+    }
   }
 
   // ── Frequency energy (tuned for 0.7 sensitivity) ──────────────────
@@ -4474,18 +4507,14 @@ function updateThreeVortexAudio() {
   }
 
   // ── Tunnel fly speed — audio driven ──────────────────────────────
-  // base 0.06, amplitude pushes up to +0.22, beat kick adds burst
-  // At 0.7 sensitivity this gives a satisfying 0.06–0.30 range
-  const themeCfg = THEMES[state.theme] || THEMES.classic;
-  const themeSpeedMult = themeCfg.animationSpeed || 0.6; // phonk=1.5, study=0.2 etc
-  data.flySpeed  = (0.05 + data.smoothedAmplitude * 0.22 + data.cameraKick) * (0.6 + themeSpeedMult * 0.8);
+  // UNIFIED SPEED: Consistently fast baseline for all themes, no theme multipliers
+  data.flySpeed  = 0.45 + data.smoothedAmplitude * 1.5 + data.cameraKick;
   data.cameraKick *= 0.82;
 
-  // ── Bloom — rises strongly with energy, theme glowIntensity scales peak ─
-  const themeGlowMult = Math.min(themeCfg.glowIntensity || 0.8, 1.5);
+  // ── Bloom — rises strongly with energy, unified for all themes ─
   data.bloomPass.strength = Math.min(
-    0.60 + data.smoothedLowMid * 0.35 * themeGlowMult + data.smoothedBass * 0.18 * themeGlowMult,
-    1.05
+    0.65 + data.smoothedLowMid * 0.45 + data.smoothedBass * 0.35,
+    1.4
   );
 
   // ── Wave history buffers (propagate bass/mid as wave down tunnel) ─
@@ -4493,10 +4522,10 @@ function updateThreeVortexAudio() {
     data.bassHistory = new Array(data.rings.length).fill(0);
     data.midHistory  = new Array(data.modules.length).fill(0);
   }
-  data.bassHistory.unshift(data.smoothedBass);
-  data.bassHistory.pop();
-  data.midHistory.unshift(data.smoothedMid);
-  data.midHistory.pop();
+  for (let i = data.bassHistory.length - 1; i > 0; i--) data.bassHistory[i] = data.bassHistory[i - 1];
+  data.bassHistory[0] = data.smoothedBass;
+  for (let i = data.midHistory.length - 1; i > 0; i--) data.midHistory[i] = data.midHistory[i - 1];
+  data.midHistory[0] = data.smoothedMid;
 
   const t = now * 0.001;
 
@@ -4510,6 +4539,25 @@ function updateThreeVortexAudio() {
   const camZ     = state.threeVortexCamera.position.z;
   const wrapDist = data.ringCount * data.ringSpacing;
 
+  // Helper to dynamically balance glow: bright/pure colors (like white or pure red) 
+  // get a strict multiplier so they don't blow out, while dark colors get a higher multiplier.
+  const getGlowMax = (color) => {
+    if (!color) return 1.2;
+    const maxC = Math.max(color.r, color.g, color.b);
+    const lum = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
+    
+    // Combine max channel value and perceived luminance. 
+    // This correctly identifies Yellow/Green as extremely bright (high lum) 
+    // compared to Red/Blue (low lum) even when maxC is 1.0 for all of them.
+    const brightness = (maxC * 0.5) + (lum * 0.5);
+    
+    // Yellow (~0.94) -> multiplier ~0.78
+    // Green  (~0.79) -> multiplier ~1.01
+    // Red    (~0.65) -> multiplier ~1.22
+    // Blue   (~0.55) -> multiplier ~1.36
+    return Math.max(0.7, 2.2 - brightness * 1.5);
+  };
+
   // ── Hex rings — fly + scale pulse + emissive intensity glow ───────
   data.rings.forEach((r, idx) => {
     r.group.position.z += data.flySpeed;
@@ -4518,10 +4566,18 @@ function updateThreeVortexAudio() {
     const targetScale = 1.0 + ringBass * 0.12;
     r.baseScale = (r.baseScale || 1.0) * 0.85 + targetScale * 0.15;
     r.group.scale.set(r.baseScale, r.baseScale, 1);
-    // Emissive glow surge on beat — kept moderate to preserve color fidelity
-    const glowLevel = Math.min(0.75 + ringBass * 0.75, 1.4);
-    if (r.outerMesh.material) r.outerMesh.material.emissiveIntensity = glowLevel;
-    if (r.innerMesh.material) r.innerMesh.material.emissiveIntensity = Math.min(0.6 + ringBass * 0.65, 1.2);
+    
+    // Dynamically balance emissive intensity
+    if (r.outerMesh.material) {
+      const maxOuter = getGlowMax(r.outerMesh.material.emissive);
+      const glowLevel = Math.min(maxOuter * 0.5 + ringBass * maxOuter * 0.7, maxOuter);
+      r.outerMesh.material.emissiveIntensity = glowLevel;
+    }
+    if (r.innerMesh.material) {
+      const maxInner = getGlowMax(r.innerMesh.material.emissive) * 0.8;
+      const glowInner = Math.min(maxInner * 0.5 + ringBass * maxInner * 0.7, maxInner);
+      r.innerMesh.material.emissiveIntensity = glowInner;
+    }
     if (r.group.position.z > camZ + 2) r.group.position.z -= wrapDist;
   });
 
@@ -4530,19 +4586,23 @@ function updateThreeVortexAudio() {
     m.group.position.z += data.flySpeed;
     if (m.group.position.z > camZ + 2) m.group.position.z -= wrapDist;
     const modMid = data.midHistory[idx] || 0;
-    // Glow surges moderately — preserves color without washing to white
-    const targetGlow = 0.75 + modMid * 0.75 + data.smoothedBass * 0.28;
-    m.glowR.material.emissiveIntensity = Math.min(targetGlow, 1.5);
-    m.glowL.material.emissiveIntensity = Math.min(targetGlow, 1.5);
+    
+    // Dynamically balance glow surges
+    if (m.glowR.material) {
+      const maxGlow = getGlowMax(m.glowR.material.emissive);
+      const targetGlow = maxGlow * 0.5 + modMid * maxGlow * 0.6 + data.smoothedBass * maxGlow * 0.2;
+      m.glowR.material.emissiveIntensity = Math.min(targetGlow, maxGlow);
+      if (m.glowL.material) m.glowL.material.emissiveIntensity = Math.min(targetGlow, maxGlow);
+    }
   });
 
   // ── Particles — fly + opacity pulse ──────────────────────────────
   const pData    = data.particles;
   const positions = pData.geo.attributes.position.array;
-  const particleBoost = data.smoothedHigh * 0.10;
+  const particleBoost = data.smoothedHigh * 0.40;
   const pWrapDist = pData.tunnelLen;
   for (let i = 0; i < pData.count; i++) {
-    positions[i * 3 + 2] += pData.speeds[i] + particleBoost + data.flySpeed * 0.55;
+    positions[i * 3 + 2] += (pData.speeds[i] * 4.0) + particleBoost + data.flySpeed * 1.5;
     if (positions[i * 3 + 2] > camZ + 1) {
       positions[i * 3 + 2] -= pWrapDist;
       positions[i * 3]     = (Math.random() - 0.5) * 6.2;
