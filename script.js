@@ -3031,9 +3031,16 @@ async function requestPip(isAuto = false) {
         height: 280
       });
 
+      // Force mobile/desktop viewport to prevent Edge from scaling down the document
+      const meta = pipWindow.document.createElement('meta');
+      meta.name = 'viewport';
+      meta.content = 'width=device-width, initial-scale=1.0';
+      pipWindow.document.head.appendChild(meta);
+
       pipWindow.document.body.innerHTML = `
         <style>
           :root { --bg: #000; --panel: #111; --text: #fff; --acc1: #5f9cff; --border: #444; }
+          *, *::before, *::after { box-sizing: border-box; }
           body { margin: 0; background: var(--bg); height: 100vh; font-family: monospace; color: var(--text); overflow: hidden; position: relative; }
           #canvas-container { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; background: var(--bg); overflow: hidden; }
           canvas { width: 100%; height: 100%; display: block; object-fit: cover; transform-origin: center center; }
