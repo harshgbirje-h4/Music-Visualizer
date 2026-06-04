@@ -4602,6 +4602,14 @@ const data = state.threeVortexData;
   state.threeVortexCamera.position.y = 0.25 + swayY * (0.4 + data.smoothedBass * 0.7 * bassMulti);
   state.threeVortexCamera.rotation.z = Math.sin(t * 0.22) * 0.014 * (1 + data.smoothedBass * 0.6 * bassMulti);
 
+  // FOV pumping for Bass Mode (creates the "screen vibing / zooming" effect inside the 3D space)
+  let targetFov = 75;
+  if (state.bassMode) {
+     targetFov -= data.smoothedBass * 15 + data.cameraKick * 25; // Decreasing FOV zooms IN
+  }
+  state.threeVortexCamera.fov = state.threeVortexCamera.fov * 0.8 + targetFov * 0.2;
+  state.threeVortexCamera.updateProjectionMatrix();
+
   const camZ     = state.threeVortexCamera.position.z;
   const wrapDist = data.ringCount * data.ringSpacing;
 
