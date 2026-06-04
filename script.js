@@ -3044,14 +3044,14 @@ async function requestPip(isAuto = false) {
           body { margin: 0; background: var(--bg); height: 100vh; font-family: monospace; color: var(--text); overflow: hidden; position: relative; }
           #canvas-container { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; background: var(--bg); overflow: hidden; }
           canvas { width: 100%; height: 100%; display: block; object-fit: cover; transform-origin: center center; }
-          #pip-controls { position: absolute; bottom: 0; left: 0; right: 0; z-index: 10; padding: 12px; background: rgba(15, 15, 15, 0.85); backdrop-filter: blur(12px); display: flex; gap: 8px; align-items: center; justify-content: center; border-top: 1px solid var(--border); flex-wrap: wrap; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease; }
-          select, button { background: rgba(30, 30, 30, 0.6); color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; cursor: pointer; outline: none; transition: all 0.2s; flex-shrink: 0; }
+          #pip-controls { position: absolute; bottom: 0; left: 0; right: 0; z-index: 10; padding: clamp(8px, 2vw, 16px); background: rgba(15, 15, 15, 0.85); backdrop-filter: blur(12px); display: flex; gap: clamp(6px, 1.5vw, 12px); align-items: center; justify-content: center; border-top: 1px solid var(--border); flex-wrap: wrap; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease; }
+          select, button { background: rgba(30, 30, 30, 0.6); color: var(--text); border: 1px solid var(--border); padding: 0.6em 1.2em; border-radius: 0.4em; font-family: monospace; font-size: clamp(11px, 2.5vw, 16px); cursor: pointer; outline: none; transition: all 0.2s; flex-shrink: 0; }
           select:hover, button:hover { border-color: var(--acc1); background: rgba(40, 40, 40, 0.8); }
           button { font-weight: bold; color: var(--acc1); border-color: var(--acc1); }
-          option { background: var(--bg); color: var(--text); font-family: monospace; }
+          option { background: var(--bg); color: var(--text); font-family: monospace; font-size: 14px; }
           body.controls-hidden #pip-controls { transform: translateY(100%); opacity: 0; pointer-events: none; }
-          #pip-sens { -webkit-appearance: none; appearance: none; width: 80px; height: 4px; border-radius: 999px; outline: none; cursor: pointer; background: linear-gradient(90deg, var(--acc2, #b835ff), var(--acc1)); }
-          #pip-sens::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--text); box-shadow: 0 0 10px var(--glow-hi, var(--acc1)); }
+          #pip-sens { -webkit-appearance: none; appearance: none; width: clamp(60px, 15vw, 120px); height: 4px; border-radius: 999px; outline: none; cursor: pointer; background: linear-gradient(90deg, var(--acc2, #b835ff), var(--acc1)); }
+          #pip-sens::-webkit-slider-thumb { -webkit-appearance: none; width: clamp(12px, 3vw, 18px); height: clamp(12px, 3vw, 18px); border-radius: 50%; background: var(--text); box-shadow: 0 0 10px var(--glow-hi, var(--acc1)); }
         </style>
         <div id="canvas-container">
           <canvas id="pip-canvas" width="600" height="320"></canvas>
@@ -3078,7 +3078,7 @@ async function requestPip(isAuto = false) {
             <option value="custom" ${state.theme === 'custom' ? 'selected' : ''}>THEME: CUSTOM</option>
           </select>
           <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-            <label for="pip-sens" style="font-size:10px;">SENS</label>
+            <label for="pip-sens" style="font-size:clamp(10px, 2vw, 14px);">SENS</label>
             <input type="range" id="pip-sens" min="0.2" max="3.0" step="0.1" value="${state.sensitivity}" />
           </div>
         </div>
