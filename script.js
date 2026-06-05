@@ -379,8 +379,19 @@ function themeConfig() {
 function resizeCanvas() {
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth <= 800;
   const dpr = isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 2);
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  
+  let w = window.innerWidth;
+  let h = window.innerHeight;
+
+  // Cap internal resolution to guarantee 60fps on massive desktop screens (4K/Retina)
+  // The CSS will hardware-upscale this to full screen with zero performance penalty.
+  const MAX_RES = 1600;
+  if (w > MAX_RES || h > MAX_RES) {
+    const scale = Math.min(MAX_RES / w, MAX_RES / h);
+    w = Math.floor(w * scale);
+    h = Math.floor(h * scale);
+  }
+
   canvas.width = bgCanvas.width = w;
   canvas.height = bgCanvas.height = h;
 
@@ -4518,11 +4529,11 @@ function setupThreeScene() {
 
 function resizeThreeVortex() {
   if (!state.threeVortexInitialized || state.threeVortexInitialized === 'loading') return;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const w = canvas.width;
+  const h = canvas.height;
   state.threeVortexCamera.aspect = w / h;
   state.threeVortexCamera.updateProjectionMatrix();
-  state.threeVortexRenderer.setSize(w, h);
+  state.threeVortexRenderer.setSize(w, h, false);
   state.threeVortexComposer.setSize(w, h);
 }
 
