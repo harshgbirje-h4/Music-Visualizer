@@ -1246,6 +1246,30 @@ function drawImageCover(ctx, img, cw, ch) {
   ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 }
 
+function drawImageContain(ctx, img, cw, ch) {
+  let imgW = img.naturalWidth || img.videoWidth || img.width;
+  let imgH = img.naturalHeight || img.videoHeight || img.height;
+  if (!imgW || !imgH) return;
+
+  const imgRatio = imgW / imgH;
+  const canvasRatio = cw / ch;
+  let drawWidth, drawHeight, offsetX, offsetY;
+
+  if (imgRatio > canvasRatio) {
+    drawWidth = cw;
+    drawHeight = cw / imgRatio;
+    offsetX = 0;
+    offsetY = (ch - drawHeight) / 2;
+  } else {
+    drawHeight = ch;
+    drawWidth = ch * imgRatio;
+    offsetX = (cw - drawWidth) / 2;
+    offsetY = 0;
+  }
+
+  ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+}
+
 function syncPipColors() {
   if (!state.pipWindow) return;
   const computed = getComputedStyle(document.body);
@@ -1786,7 +1810,7 @@ function drawRadial(c, width, height) {
   const theme = themeConfig();
   const cx = width / 2;
   const cy = height / 2;
-  const dim = Math.max(width, height) * 0.75;
+  const dim = Math.min(width, height);
   const ringRadius = dim * (theme.road ? 0.18 : 0.22);
 
   drawReactiveBackgroundCircle(c, cx, cy, ringRadius, theme);
@@ -2914,10 +2938,10 @@ function renderPip(ctxToRender, width, height) {
   if (isVortex) {
     const threeCanvas = document.getElementById('three-canvas');
     if (threeCanvas) {
-      drawImageCover(ctxToRender, threeCanvas, width, height);
+      drawImageContain(ctxToRender, threeCanvas, width, height);
     }
   } else {
-    drawImageCover(ctxToRender, canvas, width, height);
+    drawImageContain(ctxToRender, canvas, width, height);
   }
 }
 
