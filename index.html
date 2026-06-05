@@ -62,6 +62,7 @@
       <button id="btn-fullscreen" type="button" title="Fullscreen">FULL</button>
       <button id="btn-screenshot" type="button" title="Screenshot">SHOT</button>
       <button id="btn-pause" type="button" title="Pause" disabled>PAUSE</button>
+      <button id="btn-info" type="button" title="Info">INFO</button>
     </div>
   </header>
 
@@ -148,6 +149,34 @@
     </div>
     <canvas id="mini-canvas" width="600" height="320"></canvas>
     <div id="mini-source-label">NO SIGNAL</div>
+  </div>
+
+  <div id="info-modal" class="hidden">
+    <div class="info-modal-content">
+      <h2>SPECTR AUDIO VISUALIZER</h2>
+      <p>An interactive, audio-reactive experience built for modern browsers.</p>
+      <ul>
+        <li><strong>MIC:</strong> Reacts to your microphone input.</li>
+        <li><strong>FILE:</strong> Drag and drop audio/video files.</li>
+        <li><strong>SCREEN:</strong> Capture system audio via screen share.</li>
+      </ul>
+      <p>Use the control panel to change modes, themes, and sensitivity.</p>
+      <p style="color: #ff00cc; font-size: 0.9rem; margin-top: 15px; margin-bottom: 25px; font-style: italic;">
+        Note: This project is still in active development! More modes will be added soon, and the UI designs will continue to get even more beautiful.
+      </p>
+      <div class="info-signature">
+        <p class="signature-desc">Designed and developed to bring audio to life.</p>
+        <div class="signature-name">Made by <strong>Harsh Birje</strong></div>
+        <div class="social-links">
+          <a href="https://github.com/harshgbirje-h4" target="_blank">GitHub</a>
+          <span class="separator">•</span>
+          <a href="https://github.com/harshgbirje-h4/Music-Visualizer" target="_blank">Repository</a>
+          <span class="separator">•</span>
+          <a href="https://www.linkedin.com/in/harsh-birje-3413253a1/" target="_blank">LinkedIn</a>
+        </div>
+      </div>
+      <button id="btn-close-info" type="button">CLOSE</button>
+    </div>
   </div>
 
   <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>

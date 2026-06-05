@@ -312,6 +312,9 @@ const beatFlash = document.getElementById('beat-flash');
 const energyFill = document.getElementById('energy-fill');
 const btnStart = document.getElementById('btn-start');
 const btnPause = document.getElementById('btn-pause');
+const btnInfo = document.getElementById('btn-info');
+const infoModal = document.getElementById('info-modal');
+const btnCloseInfo = document.getElementById('btn-close-info');
 const btnFullscreen = document.getElementById('btn-fullscreen');
 const btnScreenshot = document.getElementById('btn-screenshot');
 const btnMini = document.getElementById('btn-mini');
@@ -3566,6 +3569,14 @@ function handleUi() {
       resetButton();
     }
     fileInput.value = '';
+  });
+
+  btnInfo.addEventListener('click', () => {
+    infoModal.classList.remove('hidden');
+  });
+
+  btnCloseInfo.addEventListener('click', () => {
+    infoModal.classList.add('hidden');
   });
 
   btnPause.addEventListener('click', () => {
