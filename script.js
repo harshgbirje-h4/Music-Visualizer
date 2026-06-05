@@ -1786,7 +1786,7 @@ function drawRadial(c, width, height) {
   const theme = themeConfig();
   const cx = width / 2;
   const cy = height / 2;
-  const dim = Math.min(width, height);
+  const dim = Math.max(width, height) * 0.75;
   const ringRadius = dim * (theme.road ? 0.18 : 0.22);
 
   drawReactiveBackgroundCircle(c, cx, cy, ringRadius, theme);
