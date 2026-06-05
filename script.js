@@ -1055,7 +1055,9 @@ function renderLoop(fromWorker = false) {
   const pumpScale = state.bassMode ? 1 + (state.bassSmoothed * 0.2) : 1;
   state.glowMultiplier = state.bassMode ? 1 + (state.bassSmoothed * 1.2) : 1;
 
-  if (state.bassMode) {
+  const isMobileScreen = window.innerWidth <= 768;
+
+  if (state.bassMode && !isMobileScreen) {
       document.body.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
   } else {
       document.body.style.transform = '';
@@ -1063,7 +1065,7 @@ function renderLoop(fromWorker = false) {
 
   const threeCanvas = document.getElementById('three-canvas');
   if (threeCanvas) {
-      if (state.bassMode && state.mode === 'vortex') {
+      if (state.bassMode && state.mode === 'vortex' && !isMobileScreen) {
           threeCanvas.style.transform = `scale(${pumpScale})`;
           threeCanvas.style.transition = 'transform 0.05s ease-out';
       } else {
@@ -1085,29 +1087,31 @@ function renderLoop(fromWorker = false) {
       updateMilkdropFilter(bcCanvas);
     }
     
-    // Update UI panel colors to match Auto Color
+    // Update UI panel colors to match Auto Color (Throttle or disable on mobile to prevent CSS CSSOM crashing)
     const hue = Math.floor(state.colorHue);
     
-    const setVars = (style) => {
-      style.setProperty('--acc1', `hsl(${hue}, 100%, 65%)`);
-      style.setProperty('--acc2', `hsl(${(hue + 30) % 360}, 100%, 75%)`);
-      style.setProperty('--acc3', `hsl(${hue}, 80%, 40%)`);
-      style.setProperty('--glow', `hsla(${hue}, 100%, 65%, 0.4)`);
-      style.setProperty('--glow-hi', `hsla(${hue}, 100%, 65%, 0.7)`);
-      style.setProperty('--border', `hsla(${hue}, 100%, 65%, 0.3)`);
-      style.setProperty('--dim', `hsl(${hue}, 60%, 65%)`);
-      style.setProperty('--text', `hsl(${hue}, 20%, 95%)`);
-      style.setProperty('--panel', `hsla(${hue}, 40%, 8%, 0.85)`);
-      style.setProperty('--panel-strong', `hsla(${hue}, 40%, 8%, 0.95)`);
-      style.setProperty('--bg', `hsl(${hue}, 50%, 3%)`);
-      style.setProperty('--bg-soft', `hsl(${hue}, 50%, 6%)`);
-    };
+    if (!isMobileScreen || state.frameCount % 5 === 0) {
+      const setVars = (style) => {
+        style.setProperty('--acc1', `hsl(${hue}, 100%, 65%)`);
+        style.setProperty('--acc2', `hsl(${(hue + 30) % 360}, 100%, 75%)`);
+        style.setProperty('--acc3', `hsl(${hue}, 80%, 40%)`);
+        style.setProperty('--glow', `hsla(${hue}, 100%, 65%, 0.4)`);
+        style.setProperty('--glow-hi', `hsla(${hue}, 100%, 65%, 0.7)`);
+        style.setProperty('--border', `hsla(${hue}, 100%, 65%, 0.3)`);
+        style.setProperty('--dim', `hsl(${hue}, 60%, 65%)`);
+        style.setProperty('--text', `hsl(${hue}, 20%, 95%)`);
+        style.setProperty('--panel', `hsla(${hue}, 40%, 8%, 0.85)`);
+        style.setProperty('--panel-strong', `hsla(${hue}, 40%, 8%, 0.95)`);
+        style.setProperty('--bg', `hsl(${hue}, 50%, 3%)`);
+        style.setProperty('--bg-soft', `hsl(${hue}, 50%, 6%)`);
+      };
 
-    setVars(document.body.style);
-    
-    // Also sync the PiP window UI if active
-    if (state.pipWindow) {
-      setVars(state.pipWindow.document.body.style);
+      setVars(document.body.style);
+      
+      // Also sync the PiP window UI if active
+      if (state.pipWindow) {
+        setVars(state.pipWindow.document.body.style);
+      }
     }
   }
 
@@ -1164,7 +1168,7 @@ function renderLoop(fromWorker = false) {
 
   if (!miniOverlayEl.classList.contains('hidden') || pipVideo) {
     renderPip(miniCtx, miniCanvas.width, miniCanvas.height);
-    if (state.bassMode) {
+    if (state.bassMode && !isMobileScreen) {
       miniCanvas.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
     } else {
       miniCanvas.style.transform = '';
@@ -1173,7 +1177,7 @@ function renderLoop(fromWorker = false) {
 
   if (state.pipWindow && state.pipCtx && state.pipCanvas) {
     renderPip(state.pipCtx, state.pipCanvas.width, state.pipCanvas.height);
-    if (state.bassMode) {
+    if (state.bassMode && !isMobileScreen) {
       state.pipCanvas.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
     } else {
       state.pipCanvas.style.transform = '';
