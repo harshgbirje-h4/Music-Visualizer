@@ -377,7 +377,7 @@ function themeConfig() {
 }
 
 function resizeCanvas() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = window.innerWidth <= 768 ? 1 : Math.min(window.devicePixelRatio || 1, 2);
   const w = window.innerWidth;
   const h = window.innerHeight;
   canvas.width = bgCanvas.width = w;
@@ -686,7 +686,7 @@ function ensureCtx() {
 
     if (window.butterchurn && window.butterchurnPresets) {
       const bcCanvas = document.getElementById('butterchurn-canvas');
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const dpr = window.innerWidth <= 768 ? 1 : Math.min(window.devicePixelRatio || 1, 2);
       const w = window.innerWidth;
       const h = window.innerHeight;
 
