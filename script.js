@@ -705,7 +705,7 @@ function ensureCtx() {
         } catch (err) {}
       }
 
-      const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth <= 800;
+
       state.visualizer = butterchurn.default.createVisualizer(state.audioCtx, bcCanvas, {
         width: w * dpr,
         height: h * dpr,
