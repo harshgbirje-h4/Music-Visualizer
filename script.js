@@ -1394,7 +1394,8 @@ function drawBgCanvas() {
     } else if (particle.type === 'ember') {
       bgCtx.fillStyle = paletteColor(particle.hueT, particle.alpha);
       bgCtx.shadowColor = paletteColor(particle.hueT, particle.alpha);
-      bgCtx.shadowBlur = 12;
+      const isMobileScreen = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth <= 800;
+      if (!isMobileScreen) bgCtx.shadowBlur = 12;
       bgCtx.beginPath();
       bgCtx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
       bgCtx.fill();
@@ -1727,7 +1728,8 @@ function drawFluidLayer(c, cx, cy, baseRadius, multiplier, color, data, blur) {
 
   c.save();
   c.fillStyle = color;
-  if (blur > 0) {
+  const isMobileScreen = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth <= 800;
+  if (blur > 0 && !isMobileScreen) {
     c.shadowColor = color;
     c.shadowBlur = blur;
   }
