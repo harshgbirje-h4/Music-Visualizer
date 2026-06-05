@@ -1246,29 +1246,6 @@ function drawImageCover(ctx, img, cw, ch) {
   ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
 }
 
-function drawImageContain(ctx, img, cw, ch) {
-  let imgW = img.naturalWidth || img.videoWidth || img.width;
-  let imgH = img.naturalHeight || img.videoHeight || img.height;
-  if (!imgW || !imgH) return;
-
-  const imgRatio = imgW / imgH;
-  const canvasRatio = cw / ch;
-  let drawWidth, drawHeight, offsetX, offsetY;
-
-  if (imgRatio > canvasRatio) {
-    drawWidth = cw;
-    drawHeight = cw / imgRatio;
-    offsetX = 0;
-    offsetY = (ch - drawHeight) / 2;
-  } else {
-    drawHeight = ch;
-    drawWidth = ch * imgRatio;
-    offsetX = (cw - drawWidth) / 2;
-    offsetY = 0;
-  }
-
-  ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-}
 
 function syncPipColors() {
   if (!state.pipWindow) return;
@@ -2938,10 +2915,10 @@ function renderPip(ctxToRender, width, height) {
   if (isVortex) {
     const threeCanvas = document.getElementById('three-canvas');
     if (threeCanvas) {
-      drawImageContain(ctxToRender, threeCanvas, width, height);
+      drawImageCover(ctxToRender, threeCanvas, width, height);
     }
   } else {
-    drawImageContain(ctxToRender, canvas, width, height);
+    drawImageCover(ctxToRender, canvas, width, height);
   }
 }
 
