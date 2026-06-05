@@ -703,12 +703,14 @@ function ensureCtx() {
         } catch (err) {}
       }
 
-      // Use pixelRatio:1 since we are manually scaling the canvas dimensions above
+      const isMobile = window.innerWidth <= 768;
       state.visualizer = butterchurn.default.createVisualizer(state.audioCtx, bcCanvas, {
         width: w * dpr,
         height: h * dpr,
         pixelRatio: 1,
-        textureRatio: 1
+        textureRatio: isMobile ? 0.5 : 1,
+        meshWidth: isMobile ? 32 : 64,
+        meshHeight: isMobile ? 24 : 48
       });
       state.visualizer.connectAudio(state.analyser);
       state.presets = butterchurnPresets.getPresets();
