@@ -3097,6 +3097,7 @@ async function requestPip(isAuto = false) {
             <option value="phonk" ${state.theme === 'phonk' ? 'selected' : ''}>THEME: PHONK</option>
             <option value="custom" ${state.theme === 'custom' ? 'selected' : ''}>THEME: CUSTOM</option>
           </select>
+          <input type="color" id="pip-custom-color" value="${document.getElementById('custom-color-picker') ? document.getElementById('custom-color-picker').value : '#00ffcc'}" style="display: ${state.theme === 'custom' ? 'inline-block' : 'none'}; width: clamp(24px, 4vw, 36px); height: clamp(24px, 4vw, 36px); padding: 0; border: none; border-radius: 0.4em; cursor: pointer; flex-shrink: 0;" title="Custom Theme Color" />
           <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
             <label for="pip-sens" style="font-size:clamp(10px, 2vw, 14px);">SENS</label>
             <input type="range" id="pip-sens" min="0.2" max="3.0" step="0.1" value="${state.sensitivity}" />
@@ -3172,7 +3173,22 @@ async function requestPip(isAuto = false) {
         const newTheme = e.target.value;
         const themeBtn = document.querySelector(`.theme-btn[data-theme="${newTheme}"]`);
         if (themeBtn) themeBtn.click();
+        const colorPicker = pipWindow.document.getElementById('pip-custom-color');
+        if (colorPicker) {
+          colorPicker.style.display = newTheme === 'custom' ? 'inline-block' : 'none';
+        }
       });
+
+      const pipCustomColor = pipWindow.document.getElementById('pip-custom-color');
+      if (pipCustomColor) {
+        pipCustomColor.addEventListener('input', (e) => {
+          const mainPicker = document.getElementById('custom-color-picker');
+          if (mainPicker) {
+            mainPicker.value = e.target.value;
+            mainPicker.dispatchEvent(new Event('input'));
+          }
+        });
+      }
 
       pipWindow.document.getElementById('pip-sens').addEventListener('input', (e) => {
         state.sensitivity = parseFloat(e.target.value);
