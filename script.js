@@ -377,7 +377,8 @@ function themeConfig() {
 }
 
 function resizeCanvas() {
-  const dpr = window.innerWidth <= 768 ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth <= 800;
+  const dpr = isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 2);
   const w = window.innerWidth;
   const h = window.innerHeight;
   canvas.width = bgCanvas.width = w;
@@ -686,7 +687,8 @@ function ensureCtx() {
 
     if (window.butterchurn && window.butterchurnPresets) {
       const bcCanvas = document.getElementById('butterchurn-canvas');
-      const dpr = window.innerWidth <= 768 ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+      const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth <= 800;
+      const dpr = isMobile ? 1 : Math.min(window.devicePixelRatio || 1, 2);
       const w = window.innerWidth;
       const h = window.innerHeight;
 
@@ -703,7 +705,7 @@ function ensureCtx() {
         } catch (err) {}
       }
 
-      const isMobile = window.innerWidth <= 768;
+      const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth <= 800;
       state.visualizer = butterchurn.default.createVisualizer(state.audioCtx, bcCanvas, {
         width: w * dpr,
         height: h * dpr,
@@ -1055,7 +1057,7 @@ function renderLoop(fromWorker = false) {
   const pumpScale = state.bassMode ? 1 + (state.bassSmoothed * 0.2) : 1;
   state.glowMultiplier = state.bassMode ? 1 + (state.bassSmoothed * 1.2) : 1;
 
-  const isMobileScreen = window.innerWidth <= 768;
+  const isMobileScreen = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth <= 800;
 
   if (state.bassMode && !isMobileScreen) {
       document.body.style.transform = `scale(${1 + (state.bassSmoothed * 0.05)})`;
@@ -1083,7 +1085,7 @@ function renderLoop(fromWorker = false) {
   if (state.autoCycle) {
     state.colorHue = (state.colorHue + theme.animationSpeed * 1.4) % 360;
     const bcCanvas = document.getElementById('butterchurn-canvas');
-    if (bcCanvas && state.mode === 'milkdrop') {
+    if (bcCanvas && state.mode === 'milkdrop' && !isMobileScreen) {
       updateMilkdropFilter(bcCanvas);
     }
     
