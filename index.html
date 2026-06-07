@@ -29,11 +29,18 @@
     <div id="file-player-name">No file loaded</div>
     <audio id="audio-element" crossorigin="anonymous"></audio>
     <div id="file-player-controls">
+      <button id="fp-prev" class="fp-icon-btn" type="button" title="Previous Track">|&lt;</button>
       <button id="fp-playpause" type="button">PLAY</button>
+      <button id="fp-next" class="fp-icon-btn" type="button" title="Next Track">&gt;|</button>
+      <button id="fp-shuffle" class="fp-icon-btn" type="button" title="Toggle Shuffle">⤨</button>
       <div id="fp-progress-wrap">
         <div id="fp-progress-bar"></div>
       </div>
       <span id="fp-time">0:00</span>
+      <button id="fp-toggle-list" class="fp-icon-btn" type="button" title="Toggle Playlist">☰</button>
+    </div>
+    <div id="file-playlist" class="hidden">
+      <!-- Playlist items will go here -->
     </div>
   </div>
 
@@ -76,12 +83,12 @@
       </div>
     </div>
 
-    <div id="start-section">
+    <div id="start-section" style="display:flex; justify-content:center; gap:10px;">
       <button id="btn-start" type="button">
         <span class="btn-icon">MIC</span>
         <span>Start Mic</span>
       </button>
-      <input type="file" id="file-input" accept="audio/*,video/*" hidden />
+      <input type="file" id="file-input" accept="audio/*,video/*" multiple hidden />
     </div>
 
     <div class="control-group">

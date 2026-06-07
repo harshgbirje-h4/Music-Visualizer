@@ -435,6 +435,60 @@ body.theme-transitioning #bg-canvas {
   font-size: 10px;
 }
 
+.fp-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--acc1);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s, transform 0.2s;
+  padding: 4px;
+}
+.fp-icon-btn:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+.fp-icon-btn.active {
+  color: var(--acc2);
+  text-shadow: 0 0 8px var(--glow);
+}
+
+#file-playlist {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#file-playlist.hidden {
+  display: none;
+}
+.playlist-item {
+  font-size: 11px;
+  color: var(--dim);
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  background: rgba(0,0,0,0.2);
+  transition: background 0.2s, color 0.2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.playlist-item:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text);
+}
+.playlist-item.playing {
+  color: var(--acc1);
+  background: color-mix(in srgb, var(--panel) 60%, var(--acc1) 40%);
+  font-weight: bold;
+}
+
 #energy-meter {
   position: fixed;
   top: 50%;
@@ -1028,7 +1082,27 @@ body.theme-transitioning #bg-canvas {
     top: 170px;
     width: 90vw;
   }
-  
+
+  #file-player-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #fp-progress-wrap {
+    order: -1;
+    flex-basis: 100%;
+    margin-bottom: 6px;
+  }
+  #fp-time {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    min-width: auto;
+  }
+  #fp-prev { order: 1; }
+  #fp-playpause { order: 2; }
+  #fp-next { order: 3; }
+  #fp-shuffle { order: 4; margin-left: 8px; }
+  #fp-toggle-list { order: 5; margin-left: 8px; }
   #source-badge {
     top: auto;
     bottom: 240px;
@@ -1084,6 +1158,11 @@ body.theme-transitioning #bg-canvas {
 }
 
 
+@media (max-width: 800px), (hover: none) and (pointer: coarse) {
+  .source-btn[data-source="screen"] {
+    display: none !important;
+  }
+}
 
 #btn-enter:hover {
   background: rgba(255, 255, 255, 0.15);

@@ -336,9 +336,19 @@ const audioEl = document.getElementById('audio-element');
 const filePlayer = document.getElementById('file-player');
 const filePlayerName = document.getElementById('file-player-name');
 const fpPlayPause = document.getElementById('fp-playpause');
+const fpPrev = document.getElementById('fp-prev');
+const fpNext = document.getElementById('fp-next');
+const fpShuffle = document.getElementById('fp-shuffle');
+const fpToggleList = document.getElementById('fp-toggle-list');
+const filePlaylist = document.getElementById('file-playlist');
 const fpProgressBar = document.getElementById('fp-progress-bar');
 const fpProgressWrap = document.getElementById('fp-progress-wrap');
 const fpTime = document.getElementById('fp-time');
+
+let playlistFiles = [];
+let currentPlaylistIndex = 0;
+let isShuffle = false;
+let shuffleOrder = [];
 const sourceBadge = document.getElementById('source-badge');
 const sourceBadgeIcon = document.getElementById('source-badge-icon');
 const sourceBadgeText = document.getElementById('source-badge-text');
@@ -688,7 +698,7 @@ function glow(c, color, blur, drawFn) {
 
 function ensureCtx() {
   if (!state.audioCtx || state.audioCtx.state === 'closed') {
-    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
     state.analyser = state.audioCtx.createAnalyser();
     state.analyser.fftSize = state.fftSize;
     state.analyser.smoothingTimeConstant = 0.85;
@@ -780,7 +790,16 @@ async function initMic() {
   try {
     ensureCtx();
     disconnectSource();
-    state.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const audioConstraints = {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      googEchoCancellation: false,
+      googAutoGainControl: false,
+      googNoiseSuppression: false,
+      googHighpassFilter: false
+    };
+    state.stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
     state.source = state.audioCtx.createMediaStreamSource(state.stream);
     state.source.connect(state.analyser);
     badge('MIC', 'MIC');
@@ -832,17 +851,15 @@ async function initScreen() {
     showToast('Select a browser tab and enable tab audio.');
     state.stream = await navigator.mediaDevices.getDisplayMedia({
       video: {
-        width: { ideal: 1280, max: 1920 },
-        height: { ideal: 720, max: 1080 },
-        frameRate: { ideal: 30, max: 60 }
+        width: 1,
+        height: 1,
+        frameRate: 1
       },
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        channelCount: 2,
-        sampleRate: 48000,
-        sampleSize: 16
+        channelCount: 2
       }
     });
     const audioTracks = state.stream.getAudioTracks();
@@ -2902,15 +2919,21 @@ function renderPip(ctxToRender, width, height) {
       ctxToRender.restore();
     }
   } else {
+    let mediaDrawn = false;
     if (state.theme === 'chill' || state.theme === 'study' || (state.theme === 'custom' && state.customBgMediaType === 'video')) {
       if (themeVideo && themeVideo.readyState >= 2 && !themeVideo.paused) {
         drawImageCover(ctxToRender, themeVideo, width, height);
+        mediaDrawn = true;
       }
     } else if (state.theme === 'phonk' && themeImage && themeImage.complete) {
       drawImageCover(ctxToRender, themeImage, width, height);
+      mediaDrawn = true;
     } else if (state.currentBgImg && state.currentBgImg.complete) {
       drawImageCover(ctxToRender, state.currentBgImg, width, height);
-    } else {
+      mediaDrawn = true;
+    }
+    
+    if (!mediaDrawn) {
       const theme = THEMES[state.theme] || THEMES.default;
       ctxToRender.fillStyle = theme.background[0] || '#000';
       ctxToRender.fillRect(0, 0, width, height);
@@ -3090,8 +3113,7 @@ async function requestPip(isAuto = false) {
           select, button { background: rgba(30, 30, 30, 0.6); color: var(--text); border: 1px solid var(--border); padding: 0.6em 1.2em; border-radius: 0.4em; font-family: monospace; font-size: clamp(11px, 2.5vw, 16px); cursor: pointer; outline: none; transition: all 0.2s; flex-shrink: 0; }
           select:hover, button:hover { border-color: var(--acc1); background: rgba(40, 40, 40, 0.8); }
           button { font-weight: bold; color: var(--acc1); border-color: var(--acc1); }
-          option { background: var(--bg); color: var(--text); font-family: monospace; font-size: 14px; }
-          body.controls-hidden #pip-controls { transform: translateY(100%); opacity: 0; pointer-events: none; }
+          option { background: var(--bg); color: var(--text); font-family: monospace; }
           #pip-sens { -webkit-appearance: none; appearance: none; width: clamp(60px, 15vw, 120px); height: 4px; border-radius: 999px; outline: none; cursor: pointer; background: linear-gradient(90deg, var(--acc2, #b835ff), var(--acc1)); }
           #pip-sens::-webkit-slider-thumb { -webkit-appearance: none; width: clamp(12px, 3vw, 18px); height: clamp(12px, 3vw, 18px); border-radius: 50%; background: var(--text); box-shadow: 0 0 10px var(--glow-hi, var(--acc1)); }
         </style>
@@ -3411,8 +3433,8 @@ function resetButton() {
 }
 
 function updateStartButtonLabel() {
-  const icon = { mic: 'MIC', file: 'FILE', screen: 'SCREEN' };
-  const label = { mic: 'Start Mic', file: 'Load File', screen: 'Capture Screen' };
+  const icon = { mic: 'MIC', file: '🎵', screen: 'SCREEN' };
+  const label = { mic: 'Start Mic', file: 'Load Files', screen: 'Capture Screen' };
   btnStart.innerHTML = `<span class="btn-icon">${icon[state.audioSource]}</span><span>${label[state.audioSource]}</span>`;
   btnStart.classList.remove('active');
 }
@@ -3562,6 +3584,10 @@ function handleUi() {
   btnStart.addEventListener('click', async () => {
     initAutoPip();
     if (!state.running) {
+      if (state.audioSource === 'file') {
+        fileInput.click();
+        return;
+      }
       btnStart.textContent = 'Connecting';
       btnStart.disabled = true;
       await startVisualizer();
@@ -3575,27 +3601,45 @@ function handleUi() {
     btnPause.textContent = 'PAUSE';
     state.paused = false;
     const overlay = document.getElementById('pause-overlay');
-    if (overlay) {
-      overlay.classList.remove('visible');
-    }
+    if (overlay) overlay.classList.remove('visible');
   });
 
-  fileInput.addEventListener('change', async (event) => {
-    const file = event.target.files[0];
-    if (!file) {
+  function generateShuffleOrder() {
+    shuffleOrder = Array.from({length: playlistFiles.length}, (_, i) => i);
+    for (let i = shuffleOrder.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffleOrder[i], shuffleOrder[j]] = [shuffleOrder[j], shuffleOrder[i]];
+    }
+  }
+
+  function renderPlaylistUI() {
+    if (playlistFiles.length <= 1) {
+      filePlaylist.classList.add('hidden');
       return;
     }
+    filePlaylist.innerHTML = '';
+    playlistFiles.forEach((file, idx) => {
+      const item = document.createElement('div');
+      item.className = 'playlist-item' + (idx === currentPlaylistIndex ? ' playing' : '');
+      item.textContent = `${idx + 1}. ${file.name.replace(/\.[^/.]+$/, '')}`;
+      item.addEventListener('click', () => playPlaylistItem(idx));
+      filePlaylist.appendChild(item);
+    });
+  }
+
+  async function playPlaylistItem(index) {
+    if (!playlistFiles[index]) return;
     btnStart.textContent = 'Loading';
     btnStart.disabled = true;
+    currentPlaylistIndex = index;
+    const file = playlistFiles[index];
     const ok = await initFile(file);
     if (ok) {
       state.running = true;
       state.paused = false;
       initAmbientParticles();
       initBgParticles();
-      if (!state.animFrameId) {
-        renderLoop();
-      }
+      if (!state.animFrameId) renderLoop();
       btnStart.innerHTML = '<span class="btn-icon">STOP</span><span>Stop</span>';
       btnStart.classList.add('active');
       btnStart.disabled = false;
@@ -3603,10 +3647,86 @@ function handleUi() {
       btnPause.textContent = 'PAUSE';
       hideStatus();
       updateMiniLabel();
+      if (playlistFiles.length > 1) {
+        filePlayerName.textContent = `[${index + 1}/${playlistFiles.length}] ${file.name.replace(/\.[^/.]+$/, '')}`;
+      }
+      renderPlaylistUI();
     } else {
       resetButton();
     }
-    fileInput.value = '';
+  }
+
+  function playNextPlaylistItem() {
+    if (playlistFiles.length === 0) return;
+    if (isShuffle) {
+      const shufIdx = shuffleOrder.indexOf(currentPlaylistIndex);
+      let nextShuf = shufIdx + 1;
+      if (nextShuf >= shuffleOrder.length) nextShuf = 0;
+      playPlaylistItem(shuffleOrder[nextShuf]);
+    } else {
+      let nextIdx = currentPlaylistIndex + 1;
+      if (nextIdx >= playlistFiles.length) nextIdx = 0;
+      playPlaylistItem(nextIdx);
+    }
+  }
+
+  async function handleFilesSelected(event) {
+    const files = Array.from(event.target.files).filter(f => f.type.startsWith('audio/') || f.type.startsWith('video/'));
+    if (!files.length) return;
+    
+    playlistFiles = files;
+    currentPlaylistIndex = 0;
+    
+    if (isShuffle) {
+      generateShuffleOrder();
+      currentPlaylistIndex = shuffleOrder[0];
+    }
+    
+    await playPlaylistItem(currentPlaylistIndex);
+    event.target.value = '';
+  }
+
+  fileInput.addEventListener('change', handleFilesSelected);
+
+  fpToggleList.addEventListener('click', () => {
+    if (playlistFiles.length > 1) {
+      filePlaylist.classList.toggle('hidden');
+    }
+  });
+
+  fpPrev.addEventListener('click', () => {
+    if (playlistFiles.length === 0) return;
+    if (isShuffle) {
+      const shufIdx = shuffleOrder.indexOf(currentPlaylistIndex);
+      let nextShuf = shufIdx - 1;
+      if (nextShuf < 0) nextShuf = shuffleOrder.length - 1;
+      playPlaylistItem(shuffleOrder[nextShuf]);
+    } else {
+      let nextIdx = currentPlaylistIndex - 1;
+      if (nextIdx < 0) nextIdx = playlistFiles.length - 1;
+      playPlaylistItem(nextIdx);
+    }
+  });
+
+  fpNext.addEventListener('click', () => playNextPlaylistItem());
+
+  fpShuffle.addEventListener('click', () => {
+    isShuffle = !isShuffle;
+    fpShuffle.classList.toggle('active', isShuffle);
+    if (isShuffle) {
+      generateShuffleOrder();
+      const currentIdxInShuffle = shuffleOrder.indexOf(currentPlaylistIndex);
+      if (currentIdxInShuffle > 0) {
+        shuffleOrder.splice(currentIdxInShuffle, 1);
+        shuffleOrder.unshift(currentPlaylistIndex);
+      }
+    }
+  });
+
+  audioEl.addEventListener('ended', () => {
+    if (playlistFiles.length > 1) {
+      playNextPlaylistItem();
+    }
   });
 
   btnInfo.addEventListener('click', () => {
